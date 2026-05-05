@@ -69,6 +69,7 @@ function parseExcelDate(val: any): string {
     return date.toISOString().split('T')[0];
   }
 
+  // Handle DD/MM/YYYY or MM/DD/YYYY
   const parts = str.split(/[\/\-\.]/);
   if (parts.length === 3) {
     let d = parseInt(parts[0]);
@@ -158,32 +159,36 @@ export function VoucherTable() {
         const workbook = XLSX.read(data, { type: "binary" });
         
         let totalImportedCount = 0;
-        const existingLedgerMap = new Map<string, string>();
-        ledgers.forEach(l => existingLedgerMap.set(l.name.trim().toLowerCase(), l.id));
+        const localExistingLedgers = new Map<string, string>();
+        ledgers.forEach(l => localExistingLedgers.set(l.name.trim().toLowerCase(), l.id));
 
         for (const sheetName of workbook.SheetNames) {
           const worksheet = workbook.Sheets[sheetName];
           // Strictly take only the first 50 rows
-          const rawJson = XLSX.utils.sheet_to_json(worksheet).slice(0, 50) as any[];
+          const rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: null }).slice(0, 50) as any[];
           
           if (rawJson.length === 0) continue;
 
-          let targetLedgerId = existingLedgerMap.get(sheetName.trim().toLowerCase());
+          let targetLedgerId = localExistingLedgers.get(sheetName.trim().toLowerCase());
           
           if (!targetLedgerId) {
             const newLedger = await createLedger(sheetName.trim(), firestore);
             targetLedgerId = newLedger.id;
-            existingLedgerMap.set(sheetName.trim().toLowerCase(), targetLedgerId);
+            localExistingLedgers.set(sheetName.trim().toLowerCase(), targetLedgerId);
             if (!activeLedgerId) setActiveLedgerId(targetLedgerId);
           }
 
           const vouchersForSheet = rawJson.map((row: any, index: number) => {
-            const vNo = row["Voucher No"] || row["Sl No"] || row["No"] || row["#"] || String(index + 1);
+            // Priority headers for voucher number
+            const vNoRaw = row["Voucher No"] || row["Sl No"] || row["No"] || row["#"] || String(index + 1);
+            const vNo = String(vNoRaw).replace(/^V-/i, '').trim(); // Remove "V-" prefix if any
+            
             const recipient = row["Paid To"] || row["Recipient"];
             const ro = Number(row["Amount (R.O.)"] || row["RO"] || 0);
             const bz = Number(row["Amount (Bz)"] || row["Bz"] || 0);
             
             // Mark as void if critical data is missing (as per user request)
+            // But KEEP the voucher number
             const isVoid = !recipient || (!ro && !bz);
 
             const totalAmount = ro + (bz / 1000);
@@ -194,7 +199,7 @@ export function VoucherTable() {
             if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
 
             return {
-              voucherNo: String(vNo).replace(/^V-/i, ''), 
+              voucherNo: vNo, 
               date: parseExcelDate(row["Date"]),
               recipient: recipient ? String(recipient) : "VOID / NO DATA",
               amountRO: ro,
@@ -233,12 +238,13 @@ export function VoucherTable() {
       v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
     )
     .sort((a, b) => {
-      // Strictly Ascending Sort by Date
+      // Strictly ASCENDING Sort by Date first
       const dateA = new Date(a.date).getTime();
       const dateB = new Date(b.date).getTime();
       if (dateA !== dateB) return dateA - dateB;
       
-      // Secondary Ascending Sort by Numeric Voucher No
+      // Secondary ASCENDING Sort by Numeric Voucher No
+      // This ensures 4201, 4202, 4203... stays in order
       const numA = parseInt(a.voucherNo.replace(/\D/g, '')) || 0;
       const numB = parseInt(b.voucherNo.replace(/\D/g, '')) || 0;
       return numA - numB;
@@ -335,7 +341,7 @@ export function VoucherTable() {
           <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8 text-center">
             <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
             <h3 className="text-lg font-bold text-slate-600 mb-1">Spreadsheet Dashboard</h3>
-            <p className="max-w-xs text-sm">Upload your Excel file. The app will automatically read up to 50 rows per sheet.</p>
+            <p className="max-w-xs text-sm">Upload your Excel file. The app will strictly read exactly 50 rows per sheet as per your requirements.</p>
           </div>
         ) : (
           <Table className="border-collapse table-fixed w-full">
@@ -373,7 +379,7 @@ export function VoucherTable() {
                     key={v.id} 
                     className={cn(
                       idx % 2 === 0 ? "bg-white border-b border-slate-100" : "bg-[#f0f7ff] border-b border-slate-100",
-                      v.isVoid && "bg-red-100 text-red-600 font-bold"
+                      v.isVoid && "bg-red-500 text-white font-black" // Strong red for VOID records
                     )}
                   >
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-center no-print">
