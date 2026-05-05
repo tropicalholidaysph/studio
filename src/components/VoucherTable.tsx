@@ -72,14 +72,17 @@ export function VoucherTable() {
   const ledgers = ledgersData || [];
 
   useEffect(() => {
-    // Critical: Only attempt to create a ledger if we are definitely logged in and done loading
+    // Wait for auth to be fully ready before any ledger operations
     if (isUserLoading || !user || ledgersLoading) return;
     
     if (ledgers.length === 0) {
-      // Create first sheet if none exists
-      createLedger("Sheet1", firestore).then(ledger => {
-        setActiveLedgerId(ledger.id);
-      });
+      // Only create if we are definitely authenticated
+      const timer = setTimeout(() => {
+        createLedger("Sheet1", firestore).then(ledger => {
+          setActiveLedgerId(ledger.id);
+        });
+      }, 500); // Small delay to ensure auth token is propagated in rules
+      return () => clearTimeout(timer);
     } else if (!activeLedgerId) {
       setActiveLedgerId(ledgers[0].id);
     }
@@ -136,7 +139,7 @@ export function VoucherTable() {
     }
 
     setIsImporting(true);
-    toast({ title: "Importing...", description: "Reading your XLSX file." });
+    toast({ title: "Starting Import", description: "Processing your Excel file..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -148,7 +151,7 @@ export function VoucherTable() {
         const json = XLSX.utils.sheet_to_json(worksheet) as any[];
 
         if (json.length === 0) {
-          toast({ variant: "destructive", title: "Empty File", description: "No data found." });
+          toast({ variant: "destructive", title: "Empty File", description: "No data found in the spreadsheet." });
           setIsImporting(false);
           return;
         }
@@ -179,9 +182,9 @@ export function VoucherTable() {
         });
 
         await bulkImportVouchers(vouchersToImport);
-        toast({ title: "Import Complete", description: `Success! ${vouchersToImport.length} vouchers imported.` });
+        toast({ title: "Import Successful", description: `Successfully imported ${vouchersToImport.length} records.` });
       } catch (error) {
-        toast({ variant: "destructive", title: "Import Failed", description: "Error processing Excel data." });
+        toast({ variant: "destructive", title: "Import Error", description: "Failed to process the Excel data. Please check the format." });
       } finally {
         setIsImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";

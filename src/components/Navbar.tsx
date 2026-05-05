@@ -32,6 +32,7 @@ export function Navbar() {
                   fill
                   className="object-contain"
                   priority
+                  unoptimized
                 />
               </div>
               <span className="font-bold text-xl text-[#E66E38] hidden sm:block">
