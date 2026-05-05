@@ -273,12 +273,10 @@ export function VoucherTable() {
     wscols[8] = { wch: 15 }; // I: Ref No
     worksheet['!cols'] = wscols;
 
-    // WHITE PAINT TECHNIQUE:
-    // This covers a large "Visual Infinity" range with white fill to remove gridlines.
-    const maxR = 2000;
-    const maxC = 100;
     const dataRows = rows.length + 1;
     const dataCols = header.length;
+    const maxR = 2000; // Paint range
+    const maxC = 100;  // Paint range
 
     const borderStyle = {
       top: { style: "thin", color: { rgb: "CCCCCC" } },
@@ -287,39 +285,32 @@ export function VoucherTable() {
       right: { style: "thin", color: { rgb: "CCCCCC" } }
     };
 
-    // Apply strict painting logic
+    // WHITE PAINT TECHNIQUE: 
+    // We iterate over a large range and force a white background to hide gridlines.
     for (let R = 0; R <= maxR; ++R) {
       for (let C = 0; C <= maxC; ++C) {
         const addr = XLSX.utils.encode_cell({ r: R, c: C });
-        const isDataArea = R < dataRows && C < dataCols;
-
+        
         if (!worksheet[addr]) {
           worksheet[addr] = { v: "", s: {} };
-        } else if (!worksheet[addr].s) {
-          worksheet[addr].s = {};
         }
 
-        // 1. Paint all background white (removes gridlines)
-        worksheet[addr].s.fill = { fgColor: { rgb: "FFFFFF" } };
-
-        // 2. Only add borders back to cells that contain actual table data
-        if (isDataArea) {
-          worksheet[addr].s.border = borderStyle;
-        }
-      }
-    }
-
-    // Header Styling (Applied specifically to the first row of data)
-    for (let C = 0; C < dataCols; ++C) {
-      const address = XLSX.utils.encode_col(C) + "1";
-      if (worksheet[address]) {
-        worksheet[address].s = {
-          ...worksheet[address].s,
-          fill: { fgColor: { rgb: "E66E38" } },
-          font: { color: { rgb: "FFFFFF" }, bold: true },
-          alignment: { horizontal: "left" },
-          border: borderStyle
+        // Apply white background to EVERYTHING to remove gridlines
+        worksheet[addr].s = {
+          ...worksheet[addr].s,
+          fill: { fgColor: { rgb: "FFFFFF" } }
         };
+
+        // If it's part of the data table, apply borders and headers
+        if (R < dataRows && C < dataCols) {
+          worksheet[addr].s.border = borderStyle;
+          
+          // Header Styling
+          if (R === 0) {
+            worksheet[addr].s.fill = { fgColor: { rgb: "E66E38" } };
+            worksheet[addr].s.font = { color: { rgb: "FFFFFF" }, bold: true };
+          }
+        }
       }
     }
 
