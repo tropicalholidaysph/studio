@@ -277,7 +277,7 @@ export function VoucherTable() {
       };
     }
 
-    // Set Column Widths and Hide everything else
+    // Set Column Widths and Aggressively Hide everything from J (index 9) to XFD
     const wscols: any[] = [];
     wscols[0] = { wch: 12 }; // A: Voucher No
     wscols[1] = { wch: 12 }; // B: Date
@@ -289,15 +289,15 @@ export function VoucherTable() {
     wscols[7] = { wch: 20 }; // H: Bank
     wscols[8] = { wch: 15 }; // I: Ref No
     
-    // Aggressively Hide columns from J (index 9) to the end of typical visible range
-    for (let i = 9; i <= 100; i++) {
+    // Hide columns from J (index 9) to 500 (covers J to XFD visually in most apps)
+    for (let i = 9; i <= 500; i++) {
       wscols[i] = { hidden: true };
     }
     worksheet['!cols'] = wscols;
 
-    // Aggressively Hide rows beyond the data
+    // Aggressively Hide rows from the end of data to 5000
     const wsrows: any[] = [];
-    for (let i = data.length; i <= 2000; i++) {
+    for (let i = data.length; i <= 5000; i++) {
       wsrows[i] = { hidden: true, hpt: 0 };
     }
     worksheet['!rows'] = wsrows;
@@ -463,7 +463,7 @@ export function VoucherTable() {
                       className={cn(
                         "border-none h-9 transition-colors",
                         isActuallyVoid 
-                          ? "bg-red-600 hover:bg-red-700 text-white" 
+                          ? "bg-[#ef4444] hover:bg-[#dc2626] text-white" 
                           : "bg-background hover:bg-muted/10"
                       )}
                     >
