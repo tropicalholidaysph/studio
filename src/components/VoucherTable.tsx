@@ -129,15 +129,24 @@ export function VoucherTable() {
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !activeLedgerId) return;
+    if (!file) return;
+
+    if (!activeLedgerId) {
+      toast({ 
+        variant: "destructive", 
+        title: "No Sheet Selected", 
+        description: "Please select a ledger sheet at the bottom before importing." 
+      });
+      return;
+    }
 
     const activeSheetName = ledgers.find(l => l.id === activeLedgerId)?.name || "Sheet";
     setIsImporting(true);
     
-    // Immediate notification that import started
+    // Explicit immediate notification
     toast({ 
-      title: "Importing...", 
-      description: `Reading data for "${activeSheetName}". Please stay on this page.` 
+      title: "File Selected", 
+      description: `Reading "${file.name}" for import into "${activeSheetName}"...` 
     });
     
     const reader = new FileReader();
@@ -154,6 +163,11 @@ export function VoucherTable() {
           setIsImporting(false);
           return;
         }
+
+        toast({ 
+          title: "Processing Data", 
+          description: `Importing ${json.length} records. This may take a moment...` 
+        });
 
         const vouchersToImport = json.map((row: any) => {
           const ro = Number(row["Amount (R.O.)"]) || Number(row["RO"]) || 0;
@@ -183,8 +197,8 @@ export function VoucherTable() {
         await bulkImportVouchers(vouchersToImport);
         
         toast({ 
-          title: "Import Successful", 
-          description: `Added ${vouchersToImport.length} vouchers to "${activeSheetName}".` 
+          title: "Import Complete!", 
+          description: `Successfully added ${vouchersToImport.length} vouchers to "${activeSheetName}".` 
         });
         
         loadVouchers(activeLedgerId);
@@ -192,13 +206,17 @@ export function VoucherTable() {
         console.error("Import error:", error);
         toast({ 
           variant: "destructive", 
-          title: "Import Failed", 
-          description: "There was a problem processing your file. Ensure headers match the template." 
+          title: "Import Error", 
+          description: "Could not process the file. Please check the spreadsheet format." 
         });
       } finally {
         setIsImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
+    };
+    reader.onerror = () => {
+      toast({ variant: "destructive", title: "Reader Error", description: "Failed to read the local file." });
+      setIsImporting(false);
     };
     reader.readAsBinaryString(file);
   };
