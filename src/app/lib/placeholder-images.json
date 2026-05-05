@@ -3,8 +3,8 @@
     {
       "id": "logo",
       "description": "Tropical Holidays Logo",
-      "imageUrl": "logo.png",
-      "imageHint": "tropical logo"
+      "imageUrl": "/logo.png",
+      "imageHint": "tropical palm"
     }
   ]
 }
