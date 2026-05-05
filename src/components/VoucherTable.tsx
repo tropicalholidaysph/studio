@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -73,23 +72,28 @@ export function VoucherTable() {
   const ledgers = ledgersData || [];
 
   useEffect(() => {
+    // Only proceed if everything is loaded and we haven't already attempted initialization
     if (isUserLoading || !user || ledgersLoading || initRef.current) return;
     
-    // If no ledgers exist at all after loading, create the first one
-    if (ledgers.length === 0) {
-      initRef.current = true;
-      const initializeSheet = async () => {
-        try {
-          const ledger = await createLedger("Sheet1", firestore);
-          setActiveLedgerId(ledger.id);
-        } catch (e) {
-          initRef.current = false;
-        }
-      };
-      initializeSheet();
-    } else if (ledgers.length > 0 && !activeLedgerId) {
-      setActiveLedgerId(ledgers[0].id);
+    // Check if we already have an active ledger set
+    if (ledgers.length > 0) {
+      if (!activeLedgerId) {
+        setActiveLedgerId(ledgers[0].id);
+      }
+      return;
     }
+
+    // If completely empty, mark as initializing and create Sheet1
+    initRef.current = true;
+    const initializeSheet = async () => {
+      try {
+        const ledger = await createLedger("Sheet1", firestore);
+        setActiveLedgerId(ledger.id);
+      } catch (e) {
+        initRef.current = false;
+      }
+    };
+    initializeSheet();
   }, [ledgers, activeLedgerId, ledgersLoading, user, isUserLoading, firestore]);
 
   const vouchersQuery = useMemoFirebase(() => {
@@ -134,12 +138,10 @@ export function VoucherTable() {
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!firestore) return;
+    if (!file || !firestore) return;
 
     setIsImporting(true);
-    toast({ title: "Starting Multi-Sheet Import", description: "Processing all sheets in your Excel file..." });
+    toast({ title: "Starting Multi-Sheet Import", description: "Reading all sheets in your Excel file..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -148,8 +150,10 @@ export function VoucherTable() {
         const workbook = XLSX.read(data, { type: "binary" });
         
         let allVouchersToImport: any[] = [];
-        const existingLedgerMap = new Map<string, string>(); // name -> id
-        ledgers.forEach(l => existingLedgerMap.set(l.name.toLowerCase(), l.id));
+        
+        // Use current ledgers as a base for identifying existing sheets
+        const sheetNameToIdMap = new Map<string, string>();
+        ledgers.forEach(l => sheetNameToIdMap.set(l.name.toLowerCase(), l.id));
 
         for (const sheetName of workbook.SheetNames) {
           const worksheet = workbook.Sheets[sheetName];
@@ -157,13 +161,13 @@ export function VoucherTable() {
           
           if (json.length === 0) continue;
 
-          let targetLedgerId = existingLedgerMap.get(sheetName.toLowerCase());
+          let targetLedgerId = sheetNameToIdMap.get(sheetName.toLowerCase());
           
-          // If sheet doesn't exist as a ledger, create it
+          // If sheet doesn't exist as a ledger, create it now
           if (!targetLedgerId) {
             const newLedger = await createLedger(sheetName, firestore);
             targetLedgerId = newLedger.id;
-            existingLedgerMap.set(sheetName.toLowerCase(), targetLedgerId);
+            sheetNameToIdMap.set(sheetName.toLowerCase(), targetLedgerId);
           }
 
           const vouchersForSheet = json.map((row: any) => {
@@ -195,15 +199,15 @@ export function VoucherTable() {
         }
 
         if (allVouchersToImport.length === 0) {
-          toast({ variant: "destructive", title: "Empty File", description: "No data found in any sheet." });
+          toast({ variant: "destructive", title: "Empty File", description: "No valid data found in any sheet." });
           setIsImporting(false);
           return;
         }
 
         await bulkImportVouchers(allVouchersToImport);
-        toast({ title: "Import Successful", description: `Successfully imported ${allVouchersToImport.length} records across ${workbook.SheetNames.length} sheets.` });
+        toast({ title: "Import Successful", description: `Processed ${allVouchersToImport.length} records across ${workbook.SheetNames.length} sheets.` });
       } catch (error) {
-        toast({ variant: "destructive", title: "Import Error", description: "Failed to process the multi-sheet data." });
+        toast({ variant: "destructive", title: "Import Error", description: "Failed to process the multi-sheet file." });
       } finally {
         setIsImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -242,7 +246,7 @@ export function VoucherTable() {
             className="h-9 text-xs flex items-center gap-2 border-[#E66E38] text-[#E66E38] hover:bg-[#E66E38] hover:text-white"
           >
             {isImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
-            Import Multi-Sheet XLSX
+            Import All Sheets (XLSX)
           </Button>
           <Link href="/vouchers/new">
             <Button size="sm" className="h-9 text-xs bg-[#E66E38] hover:bg-[#E66E38]/90 flex items-center gap-2">
@@ -279,7 +283,7 @@ export function VoucherTable() {
             {filteredVouchers.length === 0 && !vouchersLoading && !ledgersLoading ? (
               <TableRow>
                 <TableCell colSpan={10} className="h-64 text-center text-slate-400 italic text-xs">
-                  {searchTerm ? "No matching records found." : "This sheet is ready for data import."}
+                  {searchTerm ? "No matching records found." : "This sheet is ready for data entry."}
                 </TableCell>
               </TableRow>
             ) : (
@@ -307,20 +311,6 @@ export function VoucherTable() {
                 </TableRow>
               ))
             )}
-            {!vouchersLoading && !ledgersLoading && Array.from({ length: Math.max(0, 50 - filteredVouchers.length) }).map((_, i) => (
-              <TableRow key={`empty-${i}`} className="border-b border-slate-100 hover:bg-transparent">
-                <TableCell className="border-r border-slate-100 h-8" />
-                <TableCell className="border-r border-slate-100 h-8" />
-                <TableCell className="border-r border-slate-100 h-8" />
-                <TableCell className="border-r border-slate-100 h-8" />
-                <TableCell className="border-r border-slate-100 h-8" />
-                <TableCell className="border-r border-slate-100 h-8" />
-                <TableCell className="border-r border-slate-100 h-8" />
-                <TableCell className="border-r border-slate-100 h-8" />
-                <TableCell className="border-r border-slate-100 h-8" />
-                <TableCell className="h-8 no-print" />
-              </TableRow>
-            ))}
           </TableBody>
         </Table>
       </div>
@@ -364,16 +354,16 @@ export function VoucherTable() {
           </TabsList>
         </Tabs>
         <div className="px-4 text-[10px] text-slate-400 font-medium">
-          {filteredVouchers.length} Records found
+          {filteredVouchers.length} Records in current tab
         </div>
       </div>
 
       <Dialog open={isAddingLedger} onOpenChange={setIsAddingLedger}>
         <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader><DialogTitle>New Spreadsheet Sheet</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>New Sheet</DialogTitle></DialogHeader>
           <div className="py-4">
             <Input 
-              placeholder="Enter sheet name..." 
+              placeholder="Enter name (e.g. Sales, Rent)..." 
               value={newLedgerName} 
               onChange={(e) => setNewLedgerName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddLedger()}

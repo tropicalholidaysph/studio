@@ -41,8 +41,8 @@ export async function createLedger(name: string, db: Firestore): Promise<Ledger>
     createdAt: new Date().toISOString()
   };
   
-  // Non-blocking write
-  setDoc(docRef, ledger).catch(err => {
+  // We await this during import to ensure IDs are ready and state is consistent
+  await setDoc(docRef, ledger).catch(err => {
     errorEmitter.emit('permission-error', new FirestorePermissionError({
       path: docRef.path,
       operation: 'create',
