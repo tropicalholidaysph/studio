@@ -150,7 +150,7 @@ export function VoucherTable() {
     if (!file || !firestore || !user) return;
 
     setIsImporting(true);
-    toast({ title: "Importing Ledger", description: "Processing clean sequential data..." });
+    toast({ title: "Importing Ledger", description: "Processing data..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -186,7 +186,7 @@ export function VoucherTable() {
             const purpose = String(row["Being (Purpose)"] || row["Purpose"] || "").trim();
             const vNoRaw = row["Voucher No"] || row["Sl No"] || row["No"] || row["#"];
 
-            // Skip completely blank physical rows if they truly have NO identifying info
+            // Skip completely blank physical rows
             if (!recipient && ro === 0 && bz === 0 && !purpose && !vNoRaw) return;
 
             const vNo = vNoRaw ? String(vNoRaw).replace(/\D/g, '').trim() : String(index + 1);
@@ -232,7 +232,6 @@ export function VoucherTable() {
   };
 
   const handleExport = () => {
-    // Include all filtered vouchers, including VOIDs as requested
     if (filteredVouchers.length === 0) return;
     
     const exportData = filteredVouchers.map(v => ({
@@ -275,7 +274,6 @@ export function VoucherTable() {
       v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
     )
     .sort((a, b) => {
-      // Sort Ascending (1-50) as requested for strict sequential ledger
       const numA = parseInt(a.voucherNo) || 0;
       const numB = parseInt(b.voucherNo) || 0;
       if (numA !== numB) return numA - numB;
@@ -419,7 +417,12 @@ export function VoucherTable() {
                 filteredVouchers.map((v) => (
                   <TableRow 
                     key={v.id} 
-                    className="bg-background hover:bg-muted/10 border-none h-9"
+                    className={cn(
+                      "border-none h-9 transition-colors",
+                      v.isVoid 
+                        ? "bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950/30" 
+                        : "bg-background hover:bg-muted/10"
+                    )}
                   >
                     <TableCell className="border-r border-b border-border/50 px-2 py-1 text-left no-print">
                       <Checkbox 
