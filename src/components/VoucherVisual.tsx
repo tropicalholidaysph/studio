@@ -1,4 +1,3 @@
-
 "use client";
 
 import Image from "next/image";
@@ -92,10 +91,10 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
         </div>
       </div>
 
-      {/* Main Content Sections - Using 3-Column Grid to prevent English/Arabic overlapping */}
+      {/* Main Content Sections */}
       <div className="space-y-6 relative z-10">
         
-        {/* Amount Box - R.O Left, Baisa Right */}
+        {/* Amount Box */}
         <div className="flex items-start">
           <div className="border-2 border-neutral-800 w-[240px] bg-white">
             <div className="grid grid-cols-2 text-center border-b-2 border-neutral-800 bg-neutral-100">
@@ -146,7 +145,7 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
           <div className="grid grid-cols-[60px_1fr_60px] items-end border-b-2 border-dotted border-neutral-400 pb-1">
             <span className="text-[10px] font-bold text-neutral-500 uppercase pb-1">Dated</span>
             <div className="font-mono font-bold text-lg text-center px-2">
-              {voucher.refNo ? formatDate(voucher.date) : '-'}
+              {formatDate(voucher.date)}
             </div>
             <span className="text-[10px] font-bold text-neutral-500 text-right pb-1" dir="rtl">بتاريخ</span>
           </div>
