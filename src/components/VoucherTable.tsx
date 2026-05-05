@@ -18,7 +18,6 @@ import {
   DialogHeader, 
   DialogTitle, 
   DialogFooter,
-  DialogTrigger
 } from "@/components/ui/dialog";
 import { Voucher, PaymentMethod, Ledger } from "@/lib/types";
 import { 
@@ -31,7 +30,6 @@ import {
   MoreHorizontal, 
   Edit2, 
   Trash2, 
-  Check 
 } from "lucide-react";
 import { format } from "date-fns";
 import * as XLSX from "xlsx";
@@ -45,7 +43,6 @@ import {
 } from "@/lib/voucher-actions";
 import { convertAmountToWords } from "@/lib/amount-utils";
 import { useToast } from "@/hooks/use-toast";
-import { useRouter } from "next/navigation";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -68,7 +65,6 @@ export function VoucherTable() {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
-  const router = useRouter();
 
   useEffect(() => {
     loadLedgers();
@@ -86,7 +82,6 @@ export function VoucherTable() {
     if (data.length > 0 && !activeLedgerId) {
       setActiveLedgerId(data[0].id);
     } else if (data.length === 0) {
-      // Create a default ledger if none exists
       const defaultLedger = await createLedger("Main Ledger");
       setLedgers([defaultLedger]);
       setActiveLedgerId(defaultLedger.id);
@@ -173,7 +168,7 @@ export function VoucherTable() {
         });
 
         await bulkImportVouchers(vouchersToImport);
-        toast({ title: "Import Successful", description: `${vouchersToImport.length} vouchers added to ${ledgers.find(l => l.id === activeLedgerId)?.name}.` });
+        toast({ title: "Import Successful", description: `${vouchersToImport.length} vouchers added.` });
         loadVouchers(activeLedgerId);
       } catch (error) {
         console.error("Import error:", error);
@@ -229,7 +224,7 @@ export function VoucherTable() {
             className="flex-1 sm:flex-none flex items-center gap-2 border-primary/30"
           >
             {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileUp className="w-4 h-4" />}
-            Import
+            Import XLSX
           </Button>
           <Button variant="outline" onClick={exportToCSV} className="flex-1 sm:flex-none flex items-center gap-2 border-accent/30">
             <FileSpreadsheet className="w-4 h-4" />
@@ -238,72 +233,15 @@ export function VoucherTable() {
         </div>
       </div>
 
-      {/* Sheet Tabs */}
-      <div className="bg-slate-100 p-1 rounded-t-lg flex items-center border border-b-0 overflow-x-auto">
-        <Tabs value={activeLedgerId} onValueChange={setActiveLedgerId} className="w-full">
-          <TabsList className="bg-transparent justify-start h-9 p-0 gap-1">
-            {ledgers.map((ledger) => (
-              <div key={ledger.id} className="flex items-center">
-                <TabsTrigger 
-                  value={ledger.id}
-                  className="data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-8 px-4 text-xs font-medium border-x border-transparent first:border-l-0"
-                >
-                  {ledger.name}
-                </TabsTrigger>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button className="h-8 w-6 hover:bg-slate-200 flex items-center justify-center border-r border-slate-300">
-                      <MoreHorizontal className="w-3 h-3" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => { setEditingLedger(ledger); setEditName(ledger.name); }}>
-                      <Edit2 className="w-3 h-3 mr-2" /> Rename
-                    </DropdownMenuItem>
-                    <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteLedger(ledger.id)}>
-                      <Trash2 className="w-3 h-3 mr-2" /> Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            ))}
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => setIsAddingLedger(true)}
-              className="h-8 px-2 hover:bg-slate-200"
-            >
-              <Plus className="w-4 h-4" />
-            </Button>
-          </TabsList>
-        </Tabs>
-      </div>
-
-      {/* Ledger Management Dialogs */}
-      <Dialog open={isAddingLedger} onOpenChange={setIsAddingLedger}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>New Ledger Tab</DialogTitle></DialogHeader>
-          <Input placeholder="Enter ledger name (e.g. May 2024)" value={newLedgerName} onChange={(e) => setNewLedgerName(e.target.value)} />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAddingLedger(false)}>Cancel</Button>
-            <Button onClick={handleAddLedger}>Create Sheet</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!editingLedger} onOpenChange={(open) => !open && setEditingLedger(null)}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Rename Sheet</DialogTitle></DialogHeader>
-          <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingLedger(null)}>Cancel</Button>
-            <Button onClick={handleRenameLedger}>Save Changes</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Main Data Table */}
-      <div className="rounded-md border bg-white overflow-hidden shadow-sm">
+      <div className="rounded-md border bg-white overflow-hidden shadow-sm relative">
+        {isImporting && (
+          <div className="absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center space-y-4">
+            <Loader2 className="w-12 h-12 animate-spin text-primary" />
+            <p className="font-bold text-primary animate-pulse">Processing Spreadsheet Data...</p>
+          </div>
+        )}
+        
         {loading ? (
           <div className="h-64 flex items-center justify-center">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -325,8 +263,8 @@ export function VoucherTable() {
             <TableBody>
               {filteredVouchers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
-                    No records in this sheet. Use "Import" or "New Voucher" to add data.
+                  <TableCell colSpan={8} className="h-64 text-center text-muted-foreground">
+                    No records in this sheet.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -362,6 +300,76 @@ export function VoucherTable() {
           </Table>
         )}
       </div>
+
+      {/* Sheet Tabs - Moved to Bottom (Excel Style) */}
+      <div className="bg-slate-100 p-1 rounded-b-lg flex items-center border border-t-0 overflow-x-auto shadow-inner">
+        <Tabs value={activeLedgerId} onValueChange={setActiveLedgerId} className="w-full">
+          <TabsList className="bg-transparent justify-start h-9 p-0 gap-0">
+            {ledgers.map((ledger) => (
+              <div key={ledger.id} className="flex items-center group">
+                <TabsTrigger 
+                  value={ledger.id}
+                  className="data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:border-t-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none h-9 px-6 text-xs font-bold border-r border-slate-300 transition-all"
+                >
+                  {ledger.name}
+                </TabsTrigger>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="h-9 w-6 bg-slate-100 hover:bg-slate-200 flex items-center justify-center border-r border-slate-300">
+                      <MoreHorizontal className="w-3 h-3 text-slate-500" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => { setEditingLedger(ledger); setEditName(ledger.name); }}>
+                      <Edit2 className="w-3 h-3 mr-2" /> Rename
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteLedger(ledger.id)}>
+                      <Trash2 className="w-3 h-3 mr-2" /> Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ))}
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => setIsAddingLedger(true)}
+              className="h-9 px-4 hover:bg-slate-200 rounded-none text-primary"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="ml-1 text-[10px] font-bold">NEW SHEET</span>
+            </Button>
+          </TabsList>
+        </Tabs>
+      </div>
+
+      {/* Management Dialogs */}
+      <Dialog open={isAddingLedger} onOpenChange={setIsAddingLedger}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Create New Sheet</DialogTitle></DialogHeader>
+          <Input 
+            placeholder="e.g. June 2024" 
+            value={newLedgerName} 
+            onChange={(e) => setNewLedgerName(e.target.value)}
+            autoFocus 
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddingLedger(false)}>Cancel</Button>
+            <Button onClick={handleAddLedger}>Create</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editingLedger} onOpenChange={(open) => !open && setEditingLedger(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Rename Sheet</DialogTitle></DialogHeader>
+          <Input value={editName} onChange={(e) => setEditName(e.target.value)} autoFocus />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingLedger(null)}>Cancel</Button>
+            <Button onClick={handleRenameLedger}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

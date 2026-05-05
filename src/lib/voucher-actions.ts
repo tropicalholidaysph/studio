@@ -45,12 +45,38 @@ export async function renameLedger(id: string, newName: string) {
 }
 
 export async function deleteLedger(id: string) {
-  // Note: In a production app, you'd also delete all vouchers in this ledger.
-  // For this MVP, we just delete the ledger record.
+  // In this MVP, we just delete the ledger record.
+  // Ideally, you'd also delete or reassign associated vouchers.
   await deleteDoc(doc(db, LEDGERS_COLLECTION, id));
 }
 
 // --- Voucher Actions ---
+
+/**
+ * Robust bulk import that handles the 500-doc limit of Firestore batches.
+ */
+export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'createdAt'>[]) {
+  const results: string[] = [];
+  const chunkSize = 400; // Leave some headroom
+
+  for (let i = 0; i < vouchers.length; i += chunkSize) {
+    const chunk = vouchers.slice(i, i + chunkSize);
+    const batch = writeBatch(db);
+    
+    chunk.forEach((v) => {
+      const docRef = doc(collection(db, VOUCHERS_COLLECTION));
+      batch.set(docRef, {
+        ...v,
+        createdAt: Timestamp.now().toDate().toISOString(),
+      });
+      results.push(docRef.id);
+    });
+    
+    await batch.commit();
+  }
+  
+  return results;
+}
 
 export function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>) {
   const docRef = doc(collection(db, VOUCHERS_COLLECTION));
@@ -64,23 +90,6 @@ export function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>) {
   });
 
   return { success: true, id };
-}
-
-export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'createdAt'>[]) {
-  const batch = writeBatch(db);
-  const results: string[] = [];
-
-  vouchers.forEach((v) => {
-    const docRef = doc(collection(db, VOUCHERS_COLLECTION));
-    batch.set(docRef, {
-      ...v,
-      createdAt: Timestamp.now().toDate().toISOString(),
-    });
-    results.push(docRef.id);
-  });
-
-  await batch.commit();
-  return results;
 }
 
 export async function getVouchersByLedger(ledgerId: string): Promise<Voucher[]> {
