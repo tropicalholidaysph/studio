@@ -260,36 +260,15 @@ export function VoucherTable() {
     const data = [header, ...rows];
     const worksheet = XLSX.utils.aoa_to_sheet(data);
 
-    // Optimized Column Widths
+    // Disable gridlines globally to create the "blank canvas" look without cell bloat
+    worksheet["!views"] = [{ showGridLines: false }];
+
+    // Column Widths
     const wscols: any[] = [
-      { wch: 12 }, // A: Voucher No
-      { wch: 12 }, // B: Date
-      { wch: 35 }, // C: Paid To
-      { wch: 14 }, // D: Amount RO
-      { wch: 8 },  // E: Amount Bz
-      { wch: 18 }, // F: Method
-      { wch: 45 }, // G: Purpose
-      { wch: 20 }, // H: Bank
-      { wch: 15 }  // I: Ref No
+      { wch: 12 }, { wch: 12 }, { wch: 35 }, { wch: 14 }, 
+      { wch: 8 }, { wch: 18 }, { wch: 45 }, { wch: 20 }, { wch: 15 }
     ];
     worksheet['!cols'] = wscols;
-
-    const dataRows = rows.length + 1;
-    const dataCols = header.length;
-
-    // "WHITE PAINT" TECHNIQUE
-    // We paint a 200-row x 30-column area to make it look like an infinite white canvas.
-    // This is small enough to stay in KB range but covers most screens.
-    const paintRows = 200;
-    const paintCols = 30;
-
-    const whiteStyle = {
-      fill: { patternType: "solid", fgColor: { rgb: "FFFFFF" } },
-      border: {
-        top: { style: "none" }, bottom: { style: "none" },
-        left: { style: "none" }, right: { style: "none" }
-      }
-    };
 
     const tableBorderStyle = {
       top: { style: "thin", color: { rgb: "CCCCCC" } },
@@ -298,25 +277,17 @@ export function VoucherTable() {
       right: { style: "thin", color: { rgb: "CCCCCC" } }
     };
 
-    // 1. Paint the entire area white first
-    for (let R = 0; R < paintRows; ++R) {
-      for (let C = 0; C < paintCols; ++C) {
-        const addr = XLSX.utils.encode_cell({ r: R, c: C });
-        if (!worksheet[addr]) worksheet[addr] = { v: "", t: "s" };
-        worksheet[addr].s = { ...whiteStyle };
-      }
-    }
-
-    // 2. Style the actual data table
-    for (let R = 0; R < dataRows; ++R) {
-      for (let C = 0; C < dataCols; ++C) {
+    // Apply formatting to data table only
+    for (let R = 0; R < data.length; ++R) {
+      for (let C = 0; C < header.length; ++C) {
         const addr = XLSX.utils.encode_cell({ r: R, c: C });
         if (!worksheet[addr]) continue;
         
-        const cellStyle = { ...whiteStyle };
-        cellStyle.border = { ...tableBorderStyle };
+        const cellStyle: any = {
+          border: tableBorderStyle,
+          fill: { patternType: "solid", fgColor: { rgb: "FFFFFF" } }
+        };
 
-        // Header Styling (Tropical Holidays Orange)
         if (R === 0) {
           cellStyle.fill = { patternType: "solid", fgColor: { rgb: "E66E38" } };
           cellStyle.font = { color: { rgb: "FFFFFF" }, bold: true };
