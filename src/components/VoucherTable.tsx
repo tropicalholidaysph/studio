@@ -274,39 +274,53 @@ export function VoucherTable() {
     worksheet['!cols'] = wscols;
 
     // WHITE PAINT TECHNIQUE:
-    // We cover a large "Safe-Infinite" range with white fill to remove gridlines visually.
-    // We also set the worksheet reference to this large range so Excel renders it correctly.
+    // This covers a large "Visual Infinity" range with white fill to remove gridlines.
     const maxR = 2000;
     const maxC = 100;
-    worksheet['!ref'] = XLSX.utils.encode_range({
-      s: { r: 0, c: 0 },
-      e: { r: maxR, c: maxC }
-    });
+    const dataRows = rows.length + 1;
+    const dataCols = header.length;
 
+    const borderStyle = {
+      top: { style: "thin", color: { rgb: "CCCCCC" } },
+      bottom: { style: "thin", color: { rgb: "CCCCCC" } },
+      left: { style: "thin", color: { rgb: "CCCCCC" } },
+      right: { style: "thin", color: { rgb: "CCCCCC" } }
+    };
+
+    // Apply strict painting logic
     for (let R = 0; R <= maxR; ++R) {
       for (let C = 0; C <= maxC; ++C) {
         const addr = XLSX.utils.encode_cell({ r: R, c: C });
+        const isDataArea = R < dataRows && C < dataCols;
+
         if (!worksheet[addr]) {
-          worksheet[addr] = { v: "", s: { fill: { fgColor: { rgb: "FFFFFF" } } } };
-        } else {
-          // Add white background even to data cells (except where overridden by header)
-          worksheet[addr].s = {
-            ...(worksheet[addr].s || {}),
-            fill: { fgColor: { rgb: "FFFFFF" } }
-          };
+          worksheet[addr] = { v: "", s: {} };
+        } else if (!worksheet[addr].s) {
+          worksheet[addr].s = {};
+        }
+
+        // 1. Paint all background white (removes gridlines)
+        worksheet[addr].s.fill = { fgColor: { rgb: "FFFFFF" } };
+
+        // 2. Only add borders back to cells that contain actual table data
+        if (isDataArea) {
+          worksheet[addr].s.border = borderStyle;
         }
       }
     }
 
-    // Header Styling (Overrides white paint)
-    for (let C = 0; C < header.length; ++C) {
+    // Header Styling (Applied specifically to the first row of data)
+    for (let C = 0; C < dataCols; ++C) {
       const address = XLSX.utils.encode_col(C) + "1";
-      if (!worksheet[address]) continue;
-      worksheet[address].s = {
-        fill: { fgColor: { rgb: "E66E38" } },
-        font: { color: { rgb: "FFFFFF" }, bold: true },
-        alignment: { horizontal: "left" }
-      };
+      if (worksheet[address]) {
+        worksheet[address].s = {
+          ...worksheet[address].s,
+          fill: { fgColor: { rgb: "E66E38" } },
+          font: { color: { rgb: "FFFFFF" }, bold: true },
+          alignment: { horizontal: "left" },
+          border: borderStyle
+        };
+      }
     }
 
     const workbook = XLSX.utils.book_new();
