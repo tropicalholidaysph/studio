@@ -164,7 +164,7 @@ export function VoucherTable() {
 
         for (const sheetName of workbook.SheetNames) {
           const worksheet = workbook.Sheets[sheetName];
-          const rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: null }).slice(0, 50) as any[];
+          const rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: null }) as any[];
           
           if (rawJson.length === 0) continue;
 
@@ -186,6 +186,7 @@ export function VoucherTable() {
             const purpose = String(row["Being (Purpose)"] || row["Purpose"] || "").trim();
             const vNoRaw = row["Voucher No"] || row["Sl No"] || row["No"] || row["#"];
 
+            // Filter out truly empty rows to avoid junk data
             if (!recipient && ro === 0 && bz === 0 && !purpose && !vNoRaw) {
               return;
             }
@@ -235,6 +236,7 @@ export function VoucherTable() {
   const handleExport = () => {
     if (filteredVouchers.length === 0) return;
     
+    // We export exactly what's shown, including voids as requested
     const exportData = filteredVouchers.map(v => ({
       "Voucher No": v.voucherNo,
       "Date": v.date,
@@ -244,26 +246,28 @@ export function VoucherTable() {
       "Payment Method": v.paymentMethod,
       "Being (Purpose)": v.purpose,
       "Bank": v.bankName || "",
-      "Cheque/Ref No": v.refNo || ""
+      "Ref No": v.refNo || ""
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
+
+    // Set professional column widths (fitted)
     const wscols = [
-      { wch: 15 }, 
-      { wch: 12 }, 
-      { wch: 35 }, 
-      { wch: 14 }, 
-      { wch: 10 }, 
-      { wch: 18 }, 
-      { wch: 45 }, 
-      { wch: 20 }, 
-      { wch: 20 }  
+      { wch: 12 }, // Voucher No
+      { wch: 14 }, // Date
+      { wch: 35 }, // Paid To
+      { wch: 15 }, // Amount RO
+      { wch: 10 }, // Amount Bz
+      { wch: 18 }, // Method
+      { wch: 45 }, // Purpose
+      { wch: 20 }, // Bank
+      { wch: 20 }  // Ref No
     ];
     worksheet['!cols'] = wscols;
 
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Ledger");
     const ledgerName = ledgers.find(l => l.id === activeLedgerId)?.name || "Ledger";
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Ledger");
     XLSX.writeFile(workbook, `${ledgerName}_Export.xlsx`);
   };
 
@@ -419,7 +423,7 @@ export function VoucherTable() {
                     key={v.id} 
                     className={cn(
                       idx % 2 === 0 ? "bg-background" : "bg-muted/20",
-                      v.isVoid && "bg-destructive/80 text-destructive-foreground hover:bg-destructive"
+                      v.isVoid && "bg-destructive text-destructive-foreground hover:bg-destructive/90"
                     )}
                   >
                     <TableCell className="border-r border-border/50 px-2 py-1.5 text-center no-print">
