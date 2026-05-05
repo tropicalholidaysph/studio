@@ -273,22 +273,33 @@ export function VoucherTable() {
     wscols[8] = { wch: 15 }; // I: Ref No
     worksheet['!cols'] = wscols;
 
-    // WHITE PAINT TECHNIQUE: 
-    // Instead of hiding millions of rows (which crashes), we "paint" a large buffer white.
-    // This removes the gridlines for the entire visible area, creating the "blank state" effect.
-    // We apply this to a Safe-Infinite range (100 columns and 2,000 rows).
-    for (let R = 0; R <= 2000; ++R) {
-      for (let C = 0; C <= 100; ++C) {
+    // WHITE PAINT TECHNIQUE:
+    // We cover a large "Safe-Infinite" range with white fill to remove gridlines visually.
+    // We also set the worksheet reference to this large range so Excel renders it correctly.
+    const maxR = 2000;
+    const maxC = 100;
+    worksheet['!ref'] = XLSX.utils.encode_range({
+      s: { r: 0, c: 0 },
+      e: { r: maxR, c: maxC }
+    });
+
+    for (let R = 0; R <= maxR; ++R) {
+      for (let C = 0; C <= maxC; ++C) {
         const addr = XLSX.utils.encode_cell({ r: R, c: C });
         if (!worksheet[addr]) {
           worksheet[addr] = { v: "", s: { fill: { fgColor: { rgb: "FFFFFF" } } } };
+        } else {
+          // Add white background even to data cells (except where overridden by header)
+          worksheet[addr].s = {
+            ...(worksheet[addr].s || {}),
+            fill: { fgColor: { rgb: "FFFFFF" } }
+          };
         }
       }
     }
 
-    // Header Styling
-    const range = XLSX.utils.decode_range(worksheet['!ref']!);
-    for (let C = range.s.c; C <= range.e.c; ++C) {
+    // Header Styling (Overrides white paint)
+    for (let C = 0; C < header.length; ++C) {
       const address = XLSX.utils.encode_col(C) + "1";
       if (!worksheet[address]) continue;
       worksheet[address].s = {
