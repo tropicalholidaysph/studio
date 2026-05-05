@@ -164,7 +164,6 @@ export function VoucherTable() {
 
         for (const sheetName of workbook.SheetNames) {
           const worksheet = workbook.Sheets[sheetName];
-          // Strictly take the first 50 rows
           const rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: null }).slice(0, 50) as any[];
           
           if (rawJson.length === 0) continue;
@@ -180,16 +179,13 @@ export function VoucherTable() {
 
           const vouchersForSheet = rawJson.map((row: any, index: number) => {
             const vNoRaw = row["Voucher No"] || row["Sl No"] || row["No"] || row["#"] || String(index + 1);
-            // Treat as pure numeric string
             const vNo = String(vNoRaw).replace(/\D/g, '').trim(); 
             
             const recipient = row["Paid To"] || row["Recipient"];
             const ro = Number(row["Amount (R.O.)"] || row["RO"] || 0);
             const bz = Number(row["Amount (Bz)"] || row["Bz"] || 0);
             
-            // Mark as void if critical data is missing
             const isVoid = !recipient || (!ro && !bz);
-
             const totalAmount = ro + (bz / 1000);
             
             let method: PaymentMethod = "Cash";
@@ -233,7 +229,6 @@ export function VoucherTable() {
   const handleExport = () => {
     if (filteredVouchers.length === 0) return;
     
-    // Mapping exactly to original headers for a "Clean Export"
     const exportData = filteredVouchers.map(v => ({
       "Voucher No": v.voucherNo,
       "Date": v.date,
@@ -247,18 +242,16 @@ export function VoucherTable() {
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
-    
-    // Set explicit column widths to prevent "compact" overlapping in Excel
     const wscols = [
-      { wch: 15 }, // Voucher No
-      { wch: 12 }, // Date
-      { wch: 35 }, // Paid To
-      { wch: 14 }, // Amount (R.O.)
-      { wch: 10 }, // Amount (Bz)
-      { wch: 18 }, // Payment Method
-      { wch: 45 }, // Being (Purpose)
-      { wch: 20 }, // Bank
-      { wch: 20 }  // Cheque/Ref No
+      { wch: 15 }, 
+      { wch: 12 }, 
+      { wch: 35 }, 
+      { wch: 14 }, 
+      { wch: 10 }, 
+      { wch: 18 }, 
+      { wch: 45 }, 
+      { wch: 20 }, 
+      { wch: 20 }  
     ];
     worksheet['!cols'] = wscols;
 
@@ -268,7 +261,8 @@ export function VoucherTable() {
     XLSX.writeFile(workbook, `${ledgerName}_Export.xlsx`);
   };
 
-  // Strictly Ascending Sort (1-50) based on numeric voucher number
+  // Strictly Descending Sort (Latest at Top) based on numeric voucher number
+  // This ensures valid/higher-numbered records appear first.
   const filteredVouchers = vouchers
     .filter((v) => 
       v.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -278,8 +272,8 @@ export function VoucherTable() {
     .sort((a, b) => {
       const numA = parseInt(a.voucherNo) || 0;
       const numB = parseInt(b.voucherNo) || 0;
-      if (numA !== numB) return numA - numB;
-      return new Date(a.date).getTime() - new Date(b.date).getTime();
+      if (numA !== numB) return numB - numA; // Descending
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
 
   const toggleSelectAll = () => {
