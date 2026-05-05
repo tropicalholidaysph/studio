@@ -174,7 +174,8 @@ export function VoucherTable() {
           const worksheet = workbook.Sheets[sheetName];
           const rawJson = XLSX.utils.sheet_to_json(worksheet) as any[];
           
-          // CRITICAL: Filter out rows that don't have core data to stop at the actual end of records (e.g. 50 vs 100)
+          // CRITICAL: Filter out rows strictly. Stop when no ID and no recipient.
+          // This prevents reading empty rows (e.g. up to 100 when only 50 exist).
           const json = rawJson.filter(row => {
             const hasId = !!(row["Voucher No"] || row["Sl No"] || row["No"] || row["Serial"] || row["Serial No"] || row["No."]);
             const hasRecipient = !!(row["Paid To"] || row["Recipient"] || row["PARTICULARS"] || row["Name"]);
@@ -202,10 +203,11 @@ export function VoucherTable() {
             if (methodStr.includes("cheque")) method = "Cheque";
             if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
 
+            // Map sequence number directly. No "V-" prefix as requested.
             const vNo = row["Sl No"] || row["Voucher No"] || row["Voucher No."] || row["Serial No"] || row["No"] || row["#"] || row["Serial"];
 
             return {
-              voucherNo: String(vNo || "V-" + Math.floor(Math.random()*10000)),
+              voucherNo: String(vNo || Math.floor(Math.random()*10000)),
               date: parseExcelDate(row["Date"] || row["DATE"]),
               recipient: String(row["Paid To"] || row["Recipient"] || row["PARTICULARS"] || row["Name"] || "N/A"),
               amountRO: ro,
