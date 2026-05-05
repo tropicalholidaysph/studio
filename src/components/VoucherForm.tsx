@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -76,10 +76,15 @@ export function VoucherForm() {
 
   useEffect(() => {
     async function convert() {
-      if (amountRO > 0) {
+      // Explicitly convert watched values to numbers to avoid Genkit type validation errors
+      // Form inputs often return strings even if type="number"
+      const ro = Number(amountRO) || 0;
+      const bz = Number(amountBz) || 0;
+
+      if (ro > 0 || bz > 0) {
         setIsConverting(true);
         try {
-          const totalAmount = amountRO + (amountBz / 1000);
+          const totalAmount = ro + (bz / 1000);
           const result = await voucherAmountToWordsConverter({ amountInRO: totalAmount });
           form.setValue("sumInWords", result.amountInWords);
         } catch (error) {
@@ -223,7 +228,7 @@ export function VoucherForm() {
                     <FormLabel className="flex items-center gap-2">
                       Sum of Rial Omani (In Words)
                       {isConverting && <Loader2 className="w-3 h-3 animate-spin text-primary" />}
-                      {!isConverting && amountRO > 0 && <Sparkles className="w-3 h-3 text-primary" />}
+                      {!isConverting && (Number(amountRO) > 0 || Number(amountBz) > 0) && <Sparkles className="w-3 h-3 text-primary" />}
                     </FormLabel>
                     <FormControl>
                       <Textarea 
