@@ -233,7 +233,7 @@ export function VoucherTable() {
   const handleExport = () => {
     if (filteredVouchers.length === 0) return;
     
-    // Mapping exactly to your original headers for a "Clean Export"
+    // Mapping exactly to original headers for a "Clean Export"
     const exportData = filteredVouchers.map(v => ({
       "Voucher No": v.voucherNo,
       "Date": v.date,
