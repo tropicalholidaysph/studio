@@ -137,6 +137,7 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
         </div>
       </div>
 
+      {/* Footer / Signatures */}
       <div className="grid grid-cols-2 gap-20 mt-16 relative z-10 px-4">
         <div className="flex flex-col gap-1">
           <div className="flex items-end gap-2 w-full">
