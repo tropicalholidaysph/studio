@@ -1,4 +1,3 @@
-
 'use client';
 
 import { initializeFirebase } from "@/firebase";
@@ -59,10 +58,13 @@ export async function deleteLedger(id: string) {
 
 // --- Voucher Actions ---
 
+/**
+ * Optimizes bulk import by running batch commits in parallel.
+ */
 export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'createdAt'>[]) {
   const db = getDb();
-  const results: string[] = [];
-  const chunkSize = 400;
+  const chunkSize = 450; // Firestore limit is 500
+  const batches = [];
 
   for (let i = 0; i < vouchers.length; i += chunkSize) {
     const chunk = vouchers.slice(i, i + chunkSize);
@@ -74,20 +76,21 @@ export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'created
         ...v,
         createdAt: Timestamp.now().toDate().toISOString(),
       });
-      results.push(docRef.id);
     });
     
-    await batch.commit();
+    batches.push(batch.commit());
   }
   
-  return results;
+  // Run all batch commits in parallel for speed
+  await Promise.all(batches);
+  return { success: true, count: vouchers.length };
 }
 
 export function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>, db: Firestore) {
   const docRef = doc(collection(db, VOUCHERS_COLLECTION));
   const id = docRef.id;
 
-  // Use the passed in firestore instance for consistency
+  // Non-blocking firestore write
   setDoc(docRef, {
     ...voucher,
     createdAt: Timestamp.now().toDate().toISOString(),

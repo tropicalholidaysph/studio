@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
 import { VoucherTable } from "@/components/VoucherTable";
@@ -12,29 +11,37 @@ import { useUser } from "@/firebase";
 
 export default function Dashboard() {
   const { user, isUserLoading } = useUser();
+  const [isClient, setIsClient] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    // Session check
-    const localAuth = typeof window !== 'undefined' ? localStorage.getItem("auth") : null;
+    setIsClient(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isClient) return;
+
+    // Fast check using local storage
+    const localAuth = localStorage.getItem("auth");
     
+    // If no local auth and firebase loading finished with no user, redirect
     if (!isUserLoading && !user && localAuth !== "true") {
       router.push("/login");
     }
-  }, [user, isUserLoading, router]);
+  }, [user, isUserLoading, router, isClient]);
 
-  // Show loader while checking auth or if session exists but user isn't yet synced with Firebase
-  if (isUserLoading || (localStorage.getItem("auth") === "true" && !user)) {
+  // If we haven't mounted yet or we're waiting for critical auth, show minimal loader
+  if (!isClient || (isUserLoading && !user && localStorage.getItem("auth") === "true")) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background">
-        <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
-        <p className="text-muted-foreground font-medium">Connecting to Secure Ledger...</p>
+        <Loader2 className="w-10 h-10 animate-spin text-primary opacity-50 mb-4" />
+        <p className="text-muted-foreground text-sm animate-pulse">Initializing Secure Ledger...</p>
       </div>
     );
   }
 
-  // Final check to prevent unauthorized render
-  if (!user && localStorage.getItem("auth") !== "true") return null;
+  // Security guard
+  if (!user && typeof window !== 'undefined' && localStorage.getItem("auth") !== "true") return null;
 
   return (
     <div className="min-h-screen bg-background">
