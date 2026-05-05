@@ -69,7 +69,6 @@ function parseExcelDate(val: any): string {
     return date.toISOString().split('T')[0];
   }
 
-  // Handle DD/MM/YYYY or MM/DD/YYYY
   const parts = str.split(/[\/\-\.]/);
   if (parts.length === 3) {
     let d = parseInt(parts[0]);
@@ -164,7 +163,7 @@ export function VoucherTable() {
 
         for (const sheetName of workbook.SheetNames) {
           const worksheet = workbook.Sheets[sheetName];
-          // Strictly take only the first 50 rows
+          // STRICTLY slice to 50 rows
           const rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: null }).slice(0, 50) as any[];
           
           if (rawJson.length === 0) continue;
@@ -179,16 +178,15 @@ export function VoucherTable() {
           }
 
           const vouchersForSheet = rawJson.map((row: any, index: number) => {
-            // Priority headers for voucher number
             const vNoRaw = row["Voucher No"] || row["Sl No"] || row["No"] || row["#"] || String(index + 1);
-            const vNo = String(vNoRaw).replace(/^V-/i, '').trim(); // Remove "V-" prefix if any
+            // No "V-" prefix - keep as pure number string
+            const vNo = String(vNoRaw).replace(/^V-/i, '').trim(); 
             
             const recipient = row["Paid To"] || row["Recipient"];
             const ro = Number(row["Amount (R.O.)"] || row["RO"] || 0);
             const bz = Number(row["Amount (Bz)"] || row["Bz"] || 0);
             
-            // Mark as void if critical data is missing (as per user request)
-            // But KEEP the voucher number
+            // Mark as VOID if basic data is missing
             const isVoid = !recipient || (!ro && !bz);
 
             const totalAmount = ro + (bz / 1000);
@@ -220,7 +218,7 @@ export function VoucherTable() {
           }
         }
 
-        toast({ title: "Sync Complete", description: `Added ${totalImportedCount} rows successfully.` });
+        toast({ title: "Sync Complete", description: `Processed ${totalImportedCount} rows successfully.` });
       } catch (error) {
         toast({ variant: "destructive", title: "Import Error", description: "Format mismatch in spreadsheet." });
       } finally {
@@ -238,16 +236,15 @@ export function VoucherTable() {
       v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
     )
     .sort((a, b) => {
-      // Strictly ASCENDING Sort by Date first
-      const dateA = new Date(a.date).getTime();
-      const dateB = new Date(b.date).getTime();
-      if (dateA !== dateB) return dateA - dateB;
-      
-      // Secondary ASCENDING Sort by Numeric Voucher No
-      // This ensures 4201, 4202, 4203... stays in order
+      // STRICT ASCENDING SORT by Voucher Number (numeric)
       const numA = parseInt(a.voucherNo.replace(/\D/g, '')) || 0;
       const numB = parseInt(b.voucherNo.replace(/\D/g, '')) || 0;
-      return numA - numB;
+      if (numA !== numB) return numA - numB;
+      
+      // Secondary ascending sort by date
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      return dateA - dateB;
     });
 
   const toggleSelectAll = () => {
@@ -289,7 +286,7 @@ export function VoucherTable() {
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
-              placeholder="Search active sheet..." 
+              placeholder="Search sheet..." 
               className="pl-9 h-9 text-xs"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -341,7 +338,7 @@ export function VoucherTable() {
           <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8 text-center">
             <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
             <h3 className="text-lg font-bold text-slate-600 mb-1">Spreadsheet Dashboard</h3>
-            <p className="max-w-xs text-sm">Upload your Excel file. The app will strictly read exactly 50 rows per sheet as per your requirements.</p>
+            <p className="max-w-xs text-sm">Upload your Excel file. The app reads exactly 50 rows per sheet as required.</p>
           </div>
         ) : (
           <Table className="border-collapse table-fixed w-full">
@@ -370,7 +367,7 @@ export function VoucherTable() {
               {filteredVouchers.length === 0 && !vouchersLoading ? (
                 <TableRow>
                   <TableCell colSpan={11} className="h-64 text-center text-slate-400 italic text-xs">
-                    No valid records in this sheet.
+                    No records in this sheet.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -379,7 +376,7 @@ export function VoucherTable() {
                     key={v.id} 
                     className={cn(
                       idx % 2 === 0 ? "bg-white border-b border-slate-100" : "bg-[#f0f7ff] border-b border-slate-100",
-                      v.isVoid && "bg-red-500 text-white font-black" // Strong red for VOID records
+                      v.isVoid && "bg-red-500 text-white font-black hover:bg-red-600"
                     )}
                   >
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-center no-print">
@@ -397,9 +394,9 @@ export function VoucherTable() {
                     </TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-right font-black text-[11px]">{v.amountRO.toLocaleString()}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-right font-mono text-[11px]">{v.amountBz.toString().padStart(3, '0')}</TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[10px] uppercase font-semibold text-slate-500">{v.paymentMethod}</TableCell>
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[10px] uppercase font-semibold">{v.paymentMethod}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate" title={v.purpose}>{v.purpose}</TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate text-slate-500 italic">{v.bankName || "-"}</TableCell>
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate italic">{v.bankName || "-"}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate font-mono">{v.refNo || "-"}</TableCell>
                     <TableCell className="px-2 py-1 text-center no-print">
                       <Link href={`/vouchers/${v.id}`}>
