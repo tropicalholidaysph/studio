@@ -23,10 +23,11 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { voucherAmountToWordsConverter } from "@/ai/flows/voucher-amount-to-words-converter";
 import { createVoucher } from "@/lib/voucher-actions";
-import { Save, Loader2, Sparkles } from "lucide-react";
+import { Save, Loader2, Sparkles, AlertCircle } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const formSchema = z.object({
   voucherNo: z.string().min(1, "Voucher number is required"),
@@ -44,7 +45,9 @@ const formSchema = z.object({
 export function VoucherForm() {
   const [isConverting, setIsConverting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [conversionError, setConversionError] = useState(false);
   const router = useRouter();
+  const { toast } = useToast();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -62,7 +65,6 @@ export function VoucherForm() {
     },
   });
 
-  // Set initial dynamic values after hydration to avoid mismatch
   useEffect(() => {
     const randomNo = `V-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
     const today = new Date().toISOString().split('T')[0];
@@ -81,12 +83,18 @@ export function VoucherForm() {
 
       if (ro > 0 || bz > 0) {
         setIsConverting(true);
+        setConversionError(false);
         try {
           const totalAmount = ro + (bz / 1000);
           const result = await voucherAmountToWordsConverter({ amountInRO: totalAmount });
           form.setValue("sumInWords", result.amountInWords);
-        } catch (error) {
-          console.error("AI Conversion failed:", error);
+        } catch (error: any) {
+          setConversionError(true);
+          toast({
+            variant: "destructive",
+            title: "AI Conversion Unavailable",
+            description: "The AI service is currently experiencing high demand. Please enter the amount in words manually.",
+          });
         } finally {
           setIsConverting(false);
         }
@@ -95,7 +103,7 @@ export function VoucherForm() {
 
     const timer = setTimeout(convert, 1000);
     return () => clearTimeout(timer);
-  }, [amountRO, amountBz, form]);
+  }, [amountRO, amountBz, form, toast]);
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
@@ -104,7 +112,11 @@ export function VoucherForm() {
       if (res.success) {
         router.push(`/vouchers/${res.id}`);
       } else {
-        alert("Failed to save voucher");
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to save voucher. Please try again.",
+        });
       }
     } catch (error) {
       console.error(error);
@@ -157,7 +169,7 @@ export function VoucherForm() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Payment Method</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select method" />
@@ -198,7 +210,7 @@ export function VoucherForm() {
                     <FormItem>
                       <FormLabel>Amount R.O.</FormLabel>
                       <FormControl>
-                        <Input type="number" step="1" placeholder="Rial" {...field} />
+                        <Input type="number" step="0.001" placeholder="Rial" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -226,12 +238,13 @@ export function VoucherForm() {
                     <FormLabel className="flex items-center gap-2">
                       Sum of Rial Omani (In Words)
                       {isConverting && <Loader2 className="w-3 h-3 animate-spin text-primary" />}
-                      {!isConverting && (Number(amountRO) > 0 || Number(amountBz) > 0) && <Sparkles className="w-3 h-3 text-primary" />}
+                      {!isConverting && !conversionError && (Number(amountRO) > 0 || Number(amountBz) > 0) && <Sparkles className="w-3 h-3 text-primary" />}
+                      {conversionError && <AlertCircle className="w-3 h-3 text-destructive" />}
                     </FormLabel>
                     <FormControl>
                       <Textarea 
-                        placeholder="Automatically generated..." 
-                        className="bg-muted/30" 
+                        placeholder={conversionError ? "Please enter manually..." : "Automatically generated..."} 
+                        className={cn("bg-muted/30", conversionError && "border-destructive/50")} 
                         {...field} 
                       />
                     </FormControl>
