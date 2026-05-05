@@ -260,11 +260,6 @@ export function VoucherTable() {
     const data = [header, ...rows];
     const worksheet = XLSX.utils.aoa_to_sheet(data);
 
-    // CRITICAL: Turn off gridlines for the entire sheet.
-    // This removes all lines from the unused area without painting cells, 
-    // which keeps the file size extremely small (KB instead of MB).
-    worksheet['!views'] = [{ showGridLines: false }];
-
     // Optimized Column Widths
     const wscols: any[] = [
       { wch: 12 }, // A: Voucher No
@@ -282,37 +277,52 @@ export function VoucherTable() {
     const dataRows = rows.length + 1;
     const dataCols = header.length;
 
-    const borderStyle = {
+    // "WHITE PAINT" TECHNIQUE
+    // We paint a 200-row x 30-column area to make it look like an infinite white canvas.
+    // This is small enough to stay in KB range but covers most screens.
+    const paintRows = 200;
+    const paintCols = 30;
+
+    const whiteStyle = {
+      fill: { patternType: "solid", fgColor: { rgb: "FFFFFF" } },
+      border: {
+        top: { style: "none" }, bottom: { style: "none" },
+        left: { style: "none" }, right: { style: "none" }
+      }
+    };
+
+    const tableBorderStyle = {
       top: { style: "thin", color: { rgb: "CCCCCC" } },
       bottom: { style: "thin", color: { rgb: "CCCCCC" } },
       left: { style: "thin", color: { rgb: "CCCCCC" } },
       right: { style: "thin", color: { rgb: "CCCCCC" } }
     };
 
-    // Apply styles ONLY to the data table range.
-    // Everything else remains white and line-free due to the !views setting.
+    // 1. Paint the entire area white first
+    for (let R = 0; R < paintRows; ++R) {
+      for (let C = 0; C < paintCols; ++C) {
+        const addr = XLSX.utils.encode_cell({ r: R, c: C });
+        if (!worksheet[addr]) worksheet[addr] = { v: "", t: "s" };
+        worksheet[addr].s = { ...whiteStyle };
+      }
+    }
+
+    // 2. Style the actual data table
     for (let R = 0; R < dataRows; ++R) {
       for (let C = 0; C < dataCols; ++C) {
         const addr = XLSX.utils.encode_cell({ r: R, c: C });
         if (!worksheet[addr]) continue;
         
-        if (!worksheet[addr].s) worksheet[addr].s = {};
-
-        // Apply borders only to our data table to make it "fitted"
-        worksheet[addr].s.border = borderStyle;
-        worksheet[addr].s.fill = { 
-          patternType: "solid",
-          fgColor: { rgb: "FFFFFF" } 
-        };
+        const cellStyle = { ...whiteStyle };
+        cellStyle.border = { ...tableBorderStyle };
 
         // Header Styling (Tropical Holidays Orange)
         if (R === 0) {
-          worksheet[addr].s.fill = { 
-            patternType: "solid",
-            fgColor: { rgb: "E66E38" } 
-          };
-          worksheet[addr].s.font = { color: { rgb: "FFFFFF" }, bold: true };
+          cellStyle.fill = { patternType: "solid", fgColor: { rgb: "E66E38" } };
+          cellStyle.font = { color: { rgb: "FFFFFF" }, bold: true };
         }
+        
+        worksheet[addr].s = cellStyle;
       }
     }
 
