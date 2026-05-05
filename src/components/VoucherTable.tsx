@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -177,32 +178,32 @@ export function VoucherTable() {
           }
 
           const vouchersForSheet = rawJson.map((row: any, index: number) => {
-            const vNo = row["Sl No"] || row["Voucher No"] || row["Voucher No."] || row["Serial No"] || row["No"] || row["#"] || row["Serial"];
-            const recipient = row["Paid To"] || row["Recipient"] || row["PARTICULARS"] || row["Name"];
-            const ro = Number(row["Amount (R.O.)"] || row["RO"] || row["RIYAL"] || row["Amount"] || 0);
-            const bz = Number(row["Amount (Bz)"] || row["Bz"] || row["BAISA"] || 0);
+            const vNo = row["Voucher No"] || row["Sl No"] || row["No"] || row["#"] || String(index + 1);
+            const recipient = row["Paid To"] || row["Recipient"];
+            const ro = Number(row["Amount (R.O.)"] || row["RO"] || 0);
+            const bz = Number(row["Amount (Bz)"] || row["Bz"] || 0);
             
-            // Mark as void if critical data is missing
+            // Mark as void if critical data is missing (as per user request)
             const isVoid = !recipient || (!ro && !bz);
 
             const totalAmount = ro + (bz / 1000);
             
             let method: PaymentMethod = "Cash";
-            const methodStr = String(row["Payment Method"] || row["Method"] || row["MODE"] || "").toLowerCase();
+            const methodStr = String(row["Payment Method"] || row["Method"] || "").toLowerCase();
             if (methodStr.includes("cheque")) method = "Cheque";
             if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
 
             return {
-              voucherNo: vNo ? String(vNo).replace(/^V-/i, '') : String(index + 1), 
-              date: parseExcelDate(row["Date"] || row["DATE"]),
+              voucherNo: String(vNo).replace(/^V-/i, ''), 
+              date: parseExcelDate(row["Date"]),
               recipient: recipient ? String(recipient) : "VOID / NO DATA",
               amountRO: ro,
               amountBz: bz,
               sumInWords: isVoid ? "VOID" : convertAmountToWords(totalAmount),
               paymentMethod: method,
               bankName: String(row["Bank"] || ""),
-              refNo: String(row["Cheque/Ref No"] || row["Ref"] || row["CHQ NO"] || ""),
-              purpose: String(row["Being (Purpose)"] || row["Purpose"] || row["DESCRIPTION"] || "N/A"),
+              refNo: String(row["Cheque/Ref No"] || row["Ref No"] || row["Ref"] || ""),
+              purpose: String(row["Being (Purpose)"] || row["Purpose"] || "N/A"),
               ledgerId: targetLedgerId as string,
               isVoid: isVoid
             };
@@ -232,7 +233,7 @@ export function VoucherTable() {
       v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
     )
     .sort((a, b) => {
-      // Ascending Sort by Date
+      // Strictly Ascending Sort by Date
       const dateA = new Date(a.date).getTime();
       const dateB = new Date(b.date).getTime();
       if (dateA !== dateB) return dateA - dateB;
@@ -372,7 +373,7 @@ export function VoucherTable() {
                     key={v.id} 
                     className={cn(
                       idx % 2 === 0 ? "bg-white border-b border-slate-100" : "bg-[#f0f7ff] border-b border-slate-100",
-                      v.isVoid && "bg-red-50 text-red-600"
+                      v.isVoid && "bg-red-100 text-red-600 font-bold"
                     )}
                   >
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-center no-print">
@@ -381,11 +382,11 @@ export function VoucherTable() {
                         onCheckedChange={() => toggleSelect(v.id)}
                       />
                     </TableCell>
-                    <TableCell className={cn("border-r border-slate-100 px-2 py-1.5 text-[11px] font-mono font-bold", v.isVoid ? "text-red-500" : "text-destructive")}>
-                      {v.isVoid ? "VOID" : v.voucherNo}
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-mono font-bold">
+                      {v.voucherNo}
                     </TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px]">{v.date}</TableCell>
-                    <TableCell className={cn("border-r border-slate-100 px-2 py-1.5 text-[11px] font-bold", v.isVoid ? "text-red-600" : "text-slate-800")}>
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-bold">
                       {v.recipient}
                     </TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-right font-black text-[11px]">{v.amountRO.toLocaleString()}</TableCell>
@@ -396,7 +397,7 @@ export function VoucherTable() {
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate font-mono">{v.refNo || "-"}</TableCell>
                     <TableCell className="px-2 py-1 text-center no-print">
                       <Link href={`/vouchers/${v.id}`}>
-                        <Button variant="ghost" size="icon" className={cn("h-6 w-6", v.isVoid ? "text-red-400" : "text-primary hover:text-white hover:bg-primary")}>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-primary hover:text-white hover:bg-primary">
                           <Eye className="w-3.5 h-3.5" />
                         </Button>
                       </Link>

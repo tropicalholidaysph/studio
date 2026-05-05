@@ -1,3 +1,4 @@
+
 "use client";
 
 import Image from "next/image";
@@ -55,7 +56,7 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
         <div className="flex items-center gap-2">
           <span className="text-lg font-bold text-[#DB0D3A]">No.</span>
           <span className="text-2xl font-black text-[#DB0D3A] tracking-tighter font-mono">
-            {voucher.voucherNo.replace(/[^0-9]/g, '').padStart(4, '0') || '0000'}
+            {voucher.voucherNo.padStart(4, '0')}
           </span>
         </div>
 

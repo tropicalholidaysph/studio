@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -77,7 +78,7 @@ export function VoucherForm() {
         form.setValue("ledgerId", data[0].id);
       }
       
-      const randomNo = `V-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+      const randomNo = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
       const today = new Date().toISOString().split('T')[0];
       form.setValue("voucherNo", randomNo);
       form.setValue("date", today);
@@ -139,7 +140,7 @@ export function VoucherForm() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Voucher No.</FormLabel>
-                    <FormControl><Input placeholder="V-0000" {...field} /></FormControl>
+                    <FormControl><Input placeholder="0000" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
