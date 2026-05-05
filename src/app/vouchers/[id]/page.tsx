@@ -57,7 +57,7 @@ export default function VoucherDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background text-foreground">
       <Navbar />
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         <div className="flex justify-between items-center no-print">
@@ -84,7 +84,7 @@ export default function VoucherDetailPage() {
           </div>
         </div>
 
-        <div className="no-print bg-white/50 border-2 border-dashed border-primary/20 p-4 rounded-lg text-center text-sm text-muted-foreground">
+        <div className="no-print bg-muted/40 border-2 border-dashed border-primary/20 p-4 rounded-lg text-center text-sm text-muted-foreground backdrop-blur-sm">
           Below is a preview of the digital voucher. Click <strong>Print</strong> to generate a physical-style PDF copy.
         </div>
 
