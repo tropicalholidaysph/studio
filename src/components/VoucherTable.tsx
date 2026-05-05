@@ -149,7 +149,7 @@ export function VoucherTable() {
     if (!file || !firestore || !user) return;
 
     setIsImporting(true);
-    toast({ title: "Importing Ledger", description: "Processing first 50 rows per sheet..." });
+    toast({ title: "Importing Ledger", description: "Syncing exactly 50 rows per sheet..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -163,7 +163,6 @@ export function VoucherTable() {
 
         for (const sheetName of workbook.SheetNames) {
           const worksheet = workbook.Sheets[sheetName];
-          // STRICTLY slice to 50 rows only
           const rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: null }).slice(0, 50) as any[];
           
           if (rawJson.length === 0) continue;
@@ -178,16 +177,13 @@ export function VoucherTable() {
           }
 
           const vouchersForSheet = rawJson.map((row: any, index: number) => {
-            // Find Voucher No from common headers or use the row sequence
             const vNoRaw = row["Voucher No"] || row["Sl No"] || row["No"] || row["#"] || String(index + 1);
-            // Ensure pure numeric voucher number
             const vNo = String(vNoRaw).replace(/\D/g, '').trim(); 
             
             const recipient = row["Paid To"] || row["Recipient"];
             const ro = Number(row["Amount (R.O.)"] || row["RO"] || 0);
             const bz = Number(row["Amount (Bz)"] || row["Bz"] || 0);
             
-            // Mark as VOID if basic identifying data is missing
             const isVoid = !recipient || (!ro && !bz);
 
             const totalAmount = ro + (bz / 1000);
@@ -219,9 +215,9 @@ export function VoucherTable() {
           }
         }
 
-        toast({ title: "Sync Complete", description: `Processed ${totalImportedCount} rows successfully.` });
+        toast({ title: "Sync Complete", description: `Synchronized ${totalImportedCount} entries.` });
       } catch (error) {
-        toast({ variant: "destructive", title: "Import Error", description: "Format mismatch in spreadsheet." });
+        toast({ variant: "destructive", title: "Import Error", description: "Failed to process spreadsheet." });
       } finally {
         setIsImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -237,15 +233,10 @@ export function VoucherTable() {
       v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
     )
     .sort((a, b) => {
-      // STRICT ASCENDING SORT (1 -> 50)
+      // STRICT NUMERIC ASCENDING SORT
       const numA = parseInt(a.voucherNo) || 0;
       const numB = parseInt(b.voucherNo) || 0;
-      if (numA !== numB) return numA - numB;
-      
-      // Secondary ascending sort by date
-      const dateA = new Date(a.date).getTime();
-      const dateB = new Date(b.date).getTime();
-      return dateA - dateB;
+      return numA - numB;
     });
 
   const toggleSelectAll = () => {
@@ -287,7 +278,7 @@ export function VoucherTable() {
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
-              placeholder="Search active sheet..." 
+              placeholder="Search active ledger..." 
               className="pl-9 h-9 text-xs"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -339,7 +330,7 @@ export function VoucherTable() {
           <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8 text-center">
             <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
             <h3 className="text-lg font-bold text-slate-600 mb-1">Spreadsheet Dashboard</h3>
-            <p className="max-w-xs text-sm">Upload your Excel file. The system strictly reads the first 50 rows per sheet as required.</p>
+            <p className="max-w-xs text-sm">Synchronize your Excel records. The system strictly processes the first 50 rows per sheet.</p>
           </div>
         ) : (
           <Table className="border-collapse table-fixed w-full">
@@ -368,7 +359,7 @@ export function VoucherTable() {
               {filteredVouchers.length === 0 && !vouchersLoading ? (
                 <TableRow>
                   <TableCell colSpan={11} className="h-64 text-center text-slate-400 italic text-xs">
-                    No records found in this sheet.
+                    No sequential records found in this ledger.
                   </TableCell>
                 </TableRow>
               ) : (

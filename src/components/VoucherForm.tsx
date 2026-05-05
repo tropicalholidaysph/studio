@@ -29,8 +29,9 @@ import { createVoucher, getLedgers } from "@/lib/voucher-actions";
 import { convertAmountToWords } from "@/lib/amount-utils";
 import { Save, Loader2, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Ledger } from "@/lib/types";
+import { Ledger, Voucher } from "@/lib/types";
 import { useFirestore } from "@/firebase";
+import { collection, query, where, getDocs } from "firebase/firestore";
 
 const formSchema = z.object({
   voucherNo: z.string().min(1, "Voucher number is required"),
@@ -57,7 +58,7 @@ export function VoucherForm() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       voucherNo: "",
-      date: "",
+      date: new Date().toISOString().split('T')[0],
       recipient: "",
       amountRO: 0,
       amountBz: 0,
@@ -70,21 +71,36 @@ export function VoucherForm() {
     },
   });
 
+  const selectedLedgerId = form.watch("ledgerId");
+
   useEffect(() => {
-    async function load() {
+    async function loadLedgers() {
       const data = await getLedgers();
       setLedgers(data);
-      if (data.length > 0) {
+      if (data.length > 0 && !selectedLedgerId) {
         form.setValue("ledgerId", data[0].id);
       }
-      
-      const randomNo = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-      const today = new Date().toISOString().split('T')[0];
-      form.setValue("voucherNo", randomNo);
-      form.setValue("date", today);
     }
-    load();
-  }, [form]);
+    loadLedgers();
+  }, [form, selectedLedgerId]);
+
+  useEffect(() => {
+    async function calculateNextNo() {
+      if (!selectedLedgerId || !db) return;
+
+      const q = query(collection(db, "vouchers"), where("ledgerId", "==", selectedLedgerId));
+      const snapshot = await getDocs(q);
+      const existingVouchers = snapshot.docs.map(doc => doc.data() as Voucher);
+      
+      const numbers = existingVouchers
+        .map(v => parseInt(v.voucherNo))
+        .filter(n => !isNaN(n));
+      
+      const nextNo = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
+      form.setValue("voucherNo", String(nextNo));
+    }
+    calculateNextNo();
+  }, [selectedLedgerId, db, form]);
 
   const amountRO = form.watch("amountRO");
   const amountBz = form.watch("amountBz");
@@ -99,7 +115,7 @@ export function VoucherForm() {
     const res = createVoucher(values, db);
     toast({ 
       title: "Saving Record", 
-      description: "Entering voucher into your secure ledger..." 
+      description: "Generating your new sequential voucher..." 
     });
     router.push(`/vouchers/${res.id}`);
   }
@@ -140,7 +156,7 @@ export function VoucherForm() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Voucher No.</FormLabel>
-                    <FormControl><Input placeholder="0000" {...field} /></FormControl>
+                    <FormControl><Input placeholder="000" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
