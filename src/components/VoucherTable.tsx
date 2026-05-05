@@ -73,9 +73,10 @@ export function VoucherTable() {
   const ledgers = ledgersData || [];
 
   useEffect(() => {
-    if (isUserLoading || !user || ledgersLoading) return;
+    if (isUserLoading || !user || ledgersLoading || initRef.current) return;
     
-    if (ledgers.length === 0 && !initRef.current) {
+    // If no ledgers exist at all after loading, create the first one
+    if (ledgers.length === 0) {
       initRef.current = true;
       const initializeSheet = async () => {
         try {
@@ -135,58 +136,74 @@ export function VoucherTable() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!activeLedgerId) {
-      toast({ variant: "destructive", title: "Error", description: "Please select a sheet first." });
-      return;
-    }
+    if (!firestore) return;
 
     setIsImporting(true);
-    toast({ title: "Starting Import", description: "Processing your Excel file..." });
+    toast({ title: "Starting Multi-Sheet Import", description: "Processing all sheets in your Excel file..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
         const data = e.target?.result;
         const workbook = XLSX.read(data, { type: "binary" });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const json = XLSX.utils.sheet_to_json(worksheet) as any[];
+        
+        let allVouchersToImport: any[] = [];
+        const existingLedgerMap = new Map<string, string>(); // name -> id
+        ledgers.forEach(l => existingLedgerMap.set(l.name.toLowerCase(), l.id));
 
-        if (json.length === 0) {
-          toast({ variant: "destructive", title: "Empty File", description: "No data found in the spreadsheet." });
+        for (const sheetName of workbook.SheetNames) {
+          const worksheet = workbook.Sheets[sheetName];
+          const json = XLSX.utils.sheet_to_json(worksheet) as any[];
+          
+          if (json.length === 0) continue;
+
+          let targetLedgerId = existingLedgerMap.get(sheetName.toLowerCase());
+          
+          // If sheet doesn't exist as a ledger, create it
+          if (!targetLedgerId) {
+            const newLedger = await createLedger(sheetName, firestore);
+            targetLedgerId = newLedger.id;
+            existingLedgerMap.set(sheetName.toLowerCase(), targetLedgerId);
+          }
+
+          const vouchersForSheet = json.map((row: any) => {
+            const ro = Number(row["Amount (R.O.)"] || row["RO"] || 0);
+            const bz = Number(row["Amount (Bz)"] || row["Bz"] || 0);
+            const totalAmount = ro + (bz / 1000);
+            
+            let method: PaymentMethod = "Cash";
+            const methodStr = String(row["Payment Method"] || row["Method"] || "").toLowerCase();
+            if (methodStr.includes("cheque")) method = "Cheque";
+            if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
+
+            return {
+              voucherNo: String(row["Voucher No"] || row["No"] || "V-" + Math.floor(Math.random()*1000)),
+              date: row["Date"] ? new Date(row["Date"]).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+              recipient: String(row["Paid To"] || row["Recipient"] || "N/A"),
+              amountRO: ro,
+              amountBz: bz,
+              sumInWords: convertAmountToWords(totalAmount),
+              paymentMethod: method,
+              bankName: String(row["Bank"] || ""),
+              refNo: String(row["Cheque/Ref No"] || row["Ref"] || ""),
+              purpose: String(row["Being (Purpose)"] || row["Purpose"] || "N/A"),
+              ledgerId: targetLedgerId
+            };
+          });
+
+          allVouchersToImport = [...allVouchersToImport, ...vouchersForSheet];
+        }
+
+        if (allVouchersToImport.length === 0) {
+          toast({ variant: "destructive", title: "Empty File", description: "No data found in any sheet." });
           setIsImporting(false);
           return;
         }
 
-        const vouchersToImport = json.map((row: any) => {
-          const ro = Number(row["Amount (R.O.)"] || row["RO"] || 0);
-          const bz = Number(row["Amount (Bz)"] || row["Bz"] || 0);
-          const totalAmount = ro + (bz / 1000);
-          
-          let method: PaymentMethod = "Cash";
-          const methodStr = String(row["Payment Method"] || row["Method"] || "").toLowerCase();
-          if (methodStr.includes("cheque")) method = "Cheque";
-          if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
-
-          return {
-            voucherNo: String(row["Voucher No"] || row["No"] || "V-" + Math.floor(Math.random()*1000)),
-            date: row["Date"] ? new Date(row["Date"]).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-            recipient: String(row["Paid To"] || row["Recipient"] || "N/A"),
-            amountRO: ro,
-            amountBz: bz,
-            sumInWords: convertAmountToWords(totalAmount),
-            paymentMethod: method,
-            bankName: String(row["Bank"] || ""),
-            refNo: String(row["Cheque/Ref No"] || row["Ref"] || ""),
-            purpose: String(row["Being (Purpose)"] || row["Purpose"] || "N/A"),
-            ledgerId: activeLedgerId
-          };
-        });
-
-        await bulkImportVouchers(vouchersToImport);
-        toast({ title: "Import Successful", description: `Successfully imported ${vouchersToImport.length} records.` });
+        await bulkImportVouchers(allVouchersToImport);
+        toast({ title: "Import Successful", description: `Successfully imported ${allVouchersToImport.length} records across ${workbook.SheetNames.length} sheets.` });
       } catch (error) {
-        toast({ variant: "destructive", title: "Import Error", description: "Failed to process the Excel data. Please check the format." });
+        toast({ variant: "destructive", title: "Import Error", description: "Failed to process the multi-sheet data." });
       } finally {
         setIsImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -225,7 +242,7 @@ export function VoucherTable() {
             className="h-9 text-xs flex items-center gap-2 border-[#E66E38] text-[#E66E38] hover:bg-[#E66E38] hover:text-white"
           >
             {isImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
-            Import XLSX
+            Import Multi-Sheet XLSX
           </Button>
           <Link href="/vouchers/new">
             <Button size="sm" className="h-9 text-xs bg-[#E66E38] hover:bg-[#E66E38]/90 flex items-center gap-2">
