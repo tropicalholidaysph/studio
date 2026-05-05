@@ -4,22 +4,20 @@
 import Image from "next/image";
 import { Voucher } from "@/lib/types";
 import { format } from "date-fns";
-import { PlaceHolderImages } from "@/app/lib/placeholder-images";
+import logo from "@/app/public/logo.png";
 
 interface VoucherVisualProps {
   voucher: Voucher;
 }
 
 export function VoucherVisual({ voucher }: VoucherVisualProps) {
-  const logoPath = PlaceHolderImages.find(img => img.id === 'logo')?.imageUrl || "/logo.png";
-
   return (
     <div className="w-full max-w-[800px] mx-auto bg-[#FFFDE7] p-8 border-[3px] border-primary shadow-lg font-serif">
       <div className="flex justify-between items-start mb-8 border-b-2 border-primary pb-4">
         <div className="space-y-1">
           <div className="w-24 h-24 relative flex items-center justify-center rounded-lg border-2 border-primary border-dashed bg-white">
             <Image 
-              src={logoPath} 
+              src={logo} 
               alt="Tropical Holidays Logo" 
               width={80} 
               height={80}

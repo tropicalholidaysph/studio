@@ -8,12 +8,11 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { PlaceHolderImages } from "@/app/lib/placeholder-images";
+import logo from "@/app/public/logo.png";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
   const router = useRouter();
-  const logoPath = PlaceHolderImages.find(img => img.id === 'logo')?.imageUrl || "/logo.png";
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,7 +30,7 @@ export default function LoginPage() {
         <CardHeader className="text-center">
           <div className="mx-auto w-24 h-24 relative mb-4">
             <Image 
-              src={logoPath} 
+              src={logo} 
               alt="Tropical Holidays Logo" 
               fill
               className="object-contain"

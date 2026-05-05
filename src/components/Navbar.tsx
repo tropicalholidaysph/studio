@@ -6,11 +6,10 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, List, LogOut } from "lucide-react";
-import { PlaceHolderImages } from "@/app/lib/placeholder-images";
+import logo from "@/app/public/logo.png";
 
 export function Navbar() {
   const router = useRouter();
-  const logoPath = PlaceHolderImages.find(img => img.id === 'logo')?.imageUrl || "/logo.png";
 
   const handleLogout = () => {
     localStorage.removeItem("auth");
@@ -25,7 +24,7 @@ export function Navbar() {
             <Link href="/" className="flex items-center gap-3 group">
               <div className="relative w-10 h-10 overflow-hidden rounded-lg">
                 <Image 
-                  src={logoPath} 
+                  src={logo} 
                   alt="Tropical Holidays Logo" 
                   width={40} 
                   height={40}
