@@ -1,3 +1,4 @@
+
 import { db } from "./firebase";
 import { 
   collection, 
@@ -7,9 +8,11 @@ import {
   getDoc, 
   query, 
   orderBy, 
-  Timestamp 
+  Timestamp,
+  writeBatch
 } from "firebase/firestore";
 import { Voucher } from "./types";
+import { convertAmountToWords } from "./amount-utils";
 
 const VOUCHERS_COLLECTION = "vouchers";
 
@@ -17,21 +20,37 @@ const VOUCHERS_COLLECTION = "vouchers";
  * Creates a voucher non-blockingly for instant UI response.
  */
 export function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>) {
-  // Generate a document reference on the client to get the ID immediately
   const docRef = doc(collection(db, VOUCHERS_COLLECTION));
   const id = docRef.id;
 
-  // Initiate the write in the background (optimistic)
   setDoc(docRef, {
     ...voucher,
     createdAt: Timestamp.now().toDate().toISOString(),
   }).catch((error) => {
-    // Standard error logging
     console.error("Background Firestore write failed:", error);
   });
 
-  // Return the ID immediately for navigation without waiting for the server
   return { success: true, id };
+}
+
+/**
+ * Bulk imports vouchers from an array of data.
+ */
+export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'createdAt'>[]) {
+  const batch = writeBatch(db);
+  const results: string[] = [];
+
+  vouchers.forEach((v) => {
+    const docRef = doc(collection(db, VOUCHERS_COLLECTION));
+    batch.set(docRef, {
+      ...v,
+      createdAt: Timestamp.now().toDate().toISOString(),
+    });
+    results.push(docRef.id);
+  });
+
+  await batch.commit();
+  return results;
 }
 
 export async function getVouchers(): Promise<Voucher[]> {
