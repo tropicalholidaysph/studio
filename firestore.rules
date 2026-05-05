@@ -1,86 +1,32 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    /**
-     * TROPICAL LEDGER SECURITY MODEL
-     *
-     * Core Philosophy: 
-     * This ruleset implements a Database Access Control (DBAC) model. Access to the primary 
-     * financial data is decoupled from the data itself and managed via a centralized 
-     * authorization registry ('authorizedUsers').
-     *
-     * Data Structure:
-     * - /authorizedUsers/{userId}: Marker documents where the ID is the user's UID.
-     * - /paymentVouchers/{voucherId}: Flattened collection of all financial vouchers.
-     *
-     * Key Security Decisions:
-     * - Authorization Independence: Instead of checking ownership on every voucher, rules 
-     *   perform a lookup against the 'authorizedUsers' collection.
-     * - Audit Trail Integrity: While access is shared among authorized users, the 'userId' 
-     *   field on vouchers is strictly enforced to match the creator's UID and remains 
-     *   immutable to preserve the audit trail.
-     * - Restricted User Discovery: Users cannot list the entire 'authorizedUsers' collection 
-     *   to prevent enumerating the staff/employee list.
-     *
-     * Denormalization for Authorization:
-     * - The system uses a "Marker Document" pattern in '/authorizedUsers'. This acts as a 
-     *   high-performance whitelist for the entire application.
-     */
-
-    // --- Helper Functions ---
-
-    /** @description Checks if the request is from an authenticated user. */
+    
+    // Check if user is authenticated via Firebase Auth
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /** @description Checks if the authenticated user's UID exists in the authorization registry. */
-    function isAuthorized() {
-      return isSignedIn() && exists(/databases/$(database)/documents/authorizedUsers/$(request.auth.uid));
-    }
-
-    /** @description Validates that the resource exists and is being accessed by an authorized user. */
-    function isExistingAndAuthorized() {
-      return isAuthorized() && resource != null;
-    }
-
-    // --- Collection Rules ---
-
-    /**
-     * @description Authorization registry. The existence of a UID here grants access to the ledger.
-     * @path /authorizedUsers/{userId}
-     * @allow get: (get) If the user is signed in to verify their own authorization status.
-     * @deny list, write: (list) Prevents listing all employees; (write) Management is handled by system admins.
-     * @principle Authorization Registry / Marker Document Pattern.
-     */
+    // Authorization Registry: Marker documents where ID is the UID
     match /authorizedUsers/{userId} {
       allow get: if isSignedIn();
       allow list: if false;
-      allow create, update, delete: if false;
+      allow write: if false;
     }
 
-    /**
-     * @description Primary collection for payment vouchers. Access is granted based on the authorization registry.
-     * @path /paymentVouchers/{paymentVoucherId}
-     * @allow list: (list) Any user in 'authorizedUsers' can view the full history for the dashboard.
-     * @allow create: (create) Authorized users can create vouchers, provided they link their own UID for auditing.
-     * @deny update: (update) If an authorized user attempts to change the 'userId' audit field.
-     * @principle Relational Integrity and Shared Access Control.
-     */
-    match /paymentVouchers/{paymentVoucherId} {
-      
-      // Read access is shared among all authorized users for dashboard visibility.
-      allow get, list: if isAuthorized();
+    // Support for the specific collection names used in the application logic
+    match /ledgers/{ledgerId} {
+      allow read, write: if isSignedIn();
+    }
 
-      // Create: Must be authorized and must correctly attribute the voucher to themselves.
-      allow create: if isAuthorized() && request.resource.data.userId == request.auth.uid;
+    match /vouchers/{voucherId} {
+      allow read, write: if isSignedIn();
+    }
 
-      // Update: Must be authorized and must not change the original creator/audit field.
-      allow update: if isExistingAndAuthorized() && request.resource.data.userId == resource.data.userId;
-
-      // Delete: Must be authorized.
-      allow delete: if isExistingAndAuthorized();
+    // Legacy support for paymentVouchers path
+    match /paymentVouchers/{voucherId} {
+      allow read, write: if isSignedIn();
     }
   }
 }

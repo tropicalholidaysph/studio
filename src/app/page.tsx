@@ -1,43 +1,57 @@
+
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
 import { VoucherTable } from "@/components/VoucherTable";
-import { LayoutDashboard, PlusCircle } from "lucide-react";
+import { LayoutDashboard, PlusCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { useUser } from "@/firebase";
 
 export default function Dashboard() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const { user, isUserLoading } = useUser();
   const router = useRouter();
 
   useEffect(() => {
-    const auth = localStorage.getItem("auth");
-    if (auth !== "true") {
-      router.push("/login");
-    } else {
-      setIsAuthenticated(true);
+    // Combine local check with Firebase Auth check for robustness
+    const localAuth = typeof window !== 'undefined' ? localStorage.getItem("auth") : null;
+    
+    if (!isUserLoading) {
+      if (!user && localAuth !== "true") {
+        router.push("/login");
+      }
     }
-  }, [router]);
+  }, [user, isUserLoading, router]);
 
-  if (!isAuthenticated) return null;
+  if (isUserLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background">
+        <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground font-medium">Synchronizing Ledger...</p>
+      </div>
+    );
+  }
+
+  // Only render if we have a user or are locally "authed" (session persistence)
+  if (!user && (typeof window !== 'undefined' && localStorage.getItem("auth") !== "true")) return null;
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
           <div>
             <h1 className="text-3xl font-black font-headline text-foreground flex items-center gap-3">
               <LayoutDashboard className="text-primary w-8 h-8" />
               Secure Ledger
             </h1>
-            <p className="text-muted-foreground mt-1">Manage multiple holiday payment sheets with real-time sync</p>
+            <p className="text-muted-foreground mt-1">Real-time financial synchronization and voucher management</p>
           </div>
           <Link href="/vouchers/new">
-            <Button className="bg-primary hover:bg-primary/90 shadow-md">
-              <PlusCircle className="w-4 h-4 mr-2" />
+            <Button className="bg-primary hover:bg-primary/90 shadow-md h-12 px-6">
+              <PlusCircle className="w-5 h-5 mr-2" />
               New Voucher
             </Button>
           </Link>

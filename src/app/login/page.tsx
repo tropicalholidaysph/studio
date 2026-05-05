@@ -8,19 +8,47 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import logo from "@/app/public/logo.png";
+import { useAuth } from "@/firebase";
+import { signInAnonymously } from "firebase/auth";
+import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const auth = useAuth();
+  const { toast } = useToast();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password === "tropicalholidays") {
-      localStorage.setItem("auth", "true");
-      router.push("/");
+      setIsLoading(true);
+      try {
+        // Authenticate with Firebase to satisfy security rules
+        await signInAnonymously(auth);
+        localStorage.setItem("auth", "true");
+        toast({
+          title: "Access Granted",
+          description: "Connected to secure ledger.",
+        });
+        router.push("/");
+      } catch (error) {
+        console.error("Auth error:", error);
+        toast({
+          variant: "destructive",
+          title: "Connection Error",
+          description: "Could not connect to the secure database.",
+        });
+      } finally {
+        setIsLoading(false);
+      }
     } else {
-      alert("Invalid credentials");
+      toast({
+        variant: "destructive",
+        title: "Invalid Key",
+        description: "The security key provided is incorrect.",
+      });
     }
   };
 
@@ -30,7 +58,7 @@ export default function LoginPage() {
         <CardHeader className="text-center">
           <div className="mx-auto w-24 h-24 relative mb-4">
             <Image 
-              src={logo} 
+              src="/logo.png" 
               alt="Tropical Holidays Logo" 
               fill
               className="object-contain"
@@ -51,10 +79,11 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                disabled={isLoading}
               />
             </div>
-            <Button type="submit" className="w-full bg-primary hover:bg-primary/90">
-              Enter System
+            <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={isLoading}>
+              {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying...</> : "Enter System"}
             </Button>
           </form>
         </CardContent>

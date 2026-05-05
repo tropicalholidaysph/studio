@@ -1,6 +1,7 @@
+
 'use client';
 
-import { db } from "./firebase";
+import { initializeFirebase } from "@/firebase";
 import { 
   collection, 
   setDoc,
@@ -13,9 +14,13 @@ import {
   Timestamp,
   writeBatch,
   updateDoc,
-  deleteDoc
+  deleteDoc,
+  Firestore
 } from "firebase/firestore";
 import { Voucher, Ledger } from "./types";
+
+// Get consistent firestore instance
+const getDb = () => initializeFirebase().firestore;
 
 const VOUCHERS_COLLECTION = "vouchers";
 const LEDGERS_COLLECTION = "ledgers";
@@ -23,12 +28,14 @@ const LEDGERS_COLLECTION = "ledgers";
 // --- Ledger Actions ---
 
 export async function getLedgers(): Promise<Ledger[]> {
+  const db = getDb();
   const q = query(collection(db, LEDGERS_COLLECTION), orderBy("createdAt", "asc"));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ledger));
 }
 
 export async function createLedger(name: string): Promise<Ledger> {
+  const db = getDb();
   const docRef = doc(collection(db, LEDGERS_COLLECTION));
   const ledger = {
     id: docRef.id,
@@ -40,24 +47,22 @@ export async function createLedger(name: string): Promise<Ledger> {
 }
 
 export async function renameLedger(id: string, newName: string) {
+  const db = getDb();
   const docRef = doc(db, LEDGERS_COLLECTION, id);
   await updateDoc(docRef, { name: newName });
 }
 
 export async function deleteLedger(id: string) {
-  // In this MVP, we just delete the ledger record.
-  // Ideally, you'd also delete or reassign associated vouchers.
+  const db = getDb();
   await deleteDoc(doc(db, LEDGERS_COLLECTION, id));
 }
 
 // --- Voucher Actions ---
 
-/**
- * Robust bulk import that handles the 500-doc limit of Firestore batches.
- */
 export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'createdAt'>[]) {
+  const db = getDb();
   const results: string[] = [];
-  const chunkSize = 400; // Leave some headroom
+  const chunkSize = 400;
 
   for (let i = 0; i < vouchers.length; i += chunkSize) {
     const chunk = vouchers.slice(i, i + chunkSize);
@@ -78,10 +83,11 @@ export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'created
   return results;
 }
 
-export function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>) {
+export function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>, db: Firestore) {
   const docRef = doc(collection(db, VOUCHERS_COLLECTION));
   const id = docRef.id;
 
+  // Use the passed in firestore instance for consistency
   setDoc(docRef, {
     ...voucher,
     createdAt: Timestamp.now().toDate().toISOString(),
@@ -92,25 +98,8 @@ export function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>) {
   return { success: true, id };
 }
 
-export async function getVouchersByLedger(ledgerId: string): Promise<Voucher[]> {
-  try {
-    const q = query(
-      collection(db, VOUCHERS_COLLECTION), 
-      where("ledgerId", "==", ledgerId),
-      orderBy("createdAt", "desc")
-    );
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })) as Voucher[];
-  } catch (error) {
-    console.error("Error fetching vouchers:", error);
-    return [];
-  }
-}
-
 export async function getVoucherById(id: string): Promise<Voucher | null> {
+  const db = getDb();
   try {
     const docRef = doc(db, VOUCHERS_COLLECTION, id);
     const docSnap = await getDoc(docRef);
