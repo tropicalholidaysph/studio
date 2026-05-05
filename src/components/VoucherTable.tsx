@@ -53,15 +53,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFirebase, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, orderBy, where } from "firebase/firestore";
 
-/**
- * Robust date parsing for Excel imports.
- * Handles DD/MM/YYYY, MM/DD/YYYY, and Excel serial numbers.
- */
 function parseExcelDate(val: any): string {
   if (!val) return new Date().toISOString().split('T')[0];
   
   if (typeof val === 'number') {
-    // Excel base date is Dec 30, 1899
     const date = new Date(Math.round((val - 25569) * 864e5));
     return isNaN(date.getTime()) ? new Date().toISOString().split('T')[0] : date.toISOString().split('T')[0];
   }
@@ -77,7 +72,6 @@ function parseExcelDate(val: any): string {
     let d = parseInt(parts[0]);
     let m = parseInt(parts[1]) - 1; 
     let y = parts[2].length === 2 ? 2000 + parseInt(parts[2]) : parseInt(parts[2]);
-
     const manualDate = new Date(y, m, d);
     if (!isNaN(manualDate.getTime())) return manualDate.toISOString().split('T')[0];
   }
@@ -135,22 +129,17 @@ export function VoucherTable() {
     setActiveLedgerId(ledger.id);
     setNewLedgerName("");
     setIsAddingLedger(false);
-    toast({ title: "Sheet Created" });
   }
 
   async function handleRenameLedger() {
     if (!editingLedger || !editName.trim() || !firestore) return;
     await renameLedger(editingLedger.id, editName);
     setEditingLedger(null);
-    toast({ title: "Renamed Successfully" });
   }
 
   async function handleDeleteLedger(id: string) {
     await deleteLedger(id);
-    if (activeLedgerId === id) {
-      setActiveLedgerId("");
-    }
-    toast({ title: "Sheet Deleted" });
+    if (activeLedgerId === id) setActiveLedgerId("");
   }
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -158,7 +147,7 @@ export function VoucherTable() {
     if (!file || !firestore || !user) return;
 
     setIsImporting(true);
-    toast({ title: "Reading File", description: "Mapping data entries..." });
+    toast({ title: "Importing Ledger", description: "Filtering valid rows and sheets..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -174,15 +163,13 @@ export function VoucherTable() {
           const worksheet = workbook.Sheets[sheetName];
           const rawJson = XLSX.utils.sheet_to_json(worksheet) as any[];
           
-          // CRITICAL: Filter out rows strictly. Stop when no ID and no recipient.
-          // This prevents reading empty rows (e.g. up to 100 when only 50 exist).
-          const json = rawJson.filter(row => {
-            const hasId = !!(row["Voucher No"] || row["Sl No"] || row["No"] || row["Serial"] || row["Serial No"] || row["No."]);
-            const hasRecipient = !!(row["Paid To"] || row["Recipient"] || row["PARTICULARS"] || row["Name"]);
-            return hasId || hasRecipient;
+          const validRows = rawJson.filter(row => {
+            const vNo = row["Sl No"] || row["Voucher No"] || row["Voucher No."] || row["Serial No"] || row["No"] || row["#"] || row["Serial"];
+            const recipient = row["Paid To"] || row["Recipient"] || row["PARTICULARS"] || row["Name"];
+            return !!vNo && !!recipient; 
           });
 
-          if (json.length === 0) continue;
+          if (validRows.length === 0) continue;
 
           let targetLedgerId = existingLedgerMap.get(sheetName.trim().toLowerCase());
           
@@ -193,7 +180,7 @@ export function VoucherTable() {
             if (!activeLedgerId) setActiveLedgerId(targetLedgerId);
           }
 
-          const vouchersForSheet = json.map((row: any) => {
+          const vouchersForSheet = validRows.map((row: any) => {
             const ro = Number(row["Amount (R.O.)"] || row["RO"] || row["RIYAL"] || row["Amount"] || 0);
             const bz = Number(row["Amount (Bz)"] || row["Bz"] || row["BAISA"] || 0);
             const totalAmount = ro + (bz / 1000);
@@ -203,11 +190,10 @@ export function VoucherTable() {
             if (methodStr.includes("cheque")) method = "Cheque";
             if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
 
-            // Map sequence number directly. No "V-" prefix as requested.
             const vNo = row["Sl No"] || row["Voucher No"] || row["Voucher No."] || row["Serial No"] || row["No"] || row["#"] || row["Serial"];
 
             return {
-              voucherNo: String(vNo || Math.floor(Math.random()*10000)),
+              voucherNo: String(vNo).replace(/^V-/i, ''), 
               date: parseExcelDate(row["Date"] || row["DATE"]),
               recipient: String(row["Paid To"] || row["Recipient"] || row["PARTICULARS"] || row["Name"] || "N/A"),
               amountRO: ro,
@@ -227,10 +213,9 @@ export function VoucherTable() {
           }
         }
 
-        toast({ title: "Import Complete", description: `Synced ${totalImportedCount} entries successfully.` });
+        toast({ title: "Sync Complete", description: `Added ${totalImportedCount} rows successfully.` });
       } catch (error) {
-        console.error("Import error:", error);
-        toast({ variant: "destructive", title: "Format Error", description: "Excel file could not be parsed." });
+        toast({ variant: "destructive", title: "Import Error", description: "Format mismatch in spreadsheet." });
       } finally {
         setIsImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -246,12 +231,10 @@ export function VoucherTable() {
       v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
     )
     .sort((a, b) => {
-      // Primary sort: Date (Descending)
       const dateA = new Date(a.date).getTime();
       const dateB = new Date(b.date).getTime();
       if (dateB !== dateA) return dateB - dateA;
       
-      // Secondary sort: Numeric Voucher Number (Descending)
       const numA = parseInt(a.voucherNo.replace(/\D/g, '')) || 0;
       const numB = parseInt(b.voucherNo.replace(/\D/g, '')) || 0;
       return numB - numA;
@@ -281,9 +264,9 @@ export function VoucherTable() {
     try {
       await bulkDeleteVouchers(Array.from(selectedIds));
       setSelectedIds(new Set());
-      toast({ title: "Records Deleted" });
+      toast({ title: "Deleted Records" });
     } catch (e) {
-      toast({ variant: "destructive", title: "Error Deleting" });
+      toast({ variant: "destructive", title: "Deletion Failed" });
     } finally {
       setIsBulkDeleting(false);
     }
@@ -347,8 +330,8 @@ export function VoucherTable() {
         {ledgers.length === 0 && !ledgersLoading ? (
           <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8 text-center">
             <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
-            <h3 className="text-lg font-bold text-slate-600 mb-1">Secure Dashboard</h3>
-            <p className="max-w-xs text-sm">Import your financial ledger file to begin visualizing and managing vouchers. Ledger tabs will appear at the bottom once data is loaded.</p>
+            <h3 className="text-lg font-bold text-slate-600 mb-1">Spreadsheet Dashboard</h3>
+            <p className="max-w-xs text-sm">Upload your Excel file. The app will automatically read all sheets and create tabs at the bottom.</p>
           </div>
         ) : (
           <Table className="border-collapse table-fixed w-full">
@@ -377,7 +360,7 @@ export function VoucherTable() {
               {filteredVouchers.length === 0 && !vouchersLoading ? (
                 <TableRow>
                   <TableCell colSpan={11} className="h-64 text-center text-slate-400 italic text-xs">
-                    No matching records found in this sheet.
+                    No valid records in this sheet.
                   </TableCell>
                 </TableRow>
               ) : (
