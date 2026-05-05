@@ -67,25 +67,21 @@ function parseExcelDate(val: any): string {
   }
 
   const str = String(val).trim();
-  // Try standard JS parsing first
   const date = new Date(str);
   if (!isNaN(date.getTime())) {
     return date.toISOString().split('T')[0];
   }
 
-  // Handle DD/MM/YYYY or MM/DD/YYYY manually
   const parts = str.split(/[\/\-\.]/);
   if (parts.length === 3) {
     let d = parseInt(parts[0]);
-    let m = parseInt(parts[1]) - 1; // 0-indexed
+    let m = parseInt(parts[1]) - 1; 
     let y = parts[2].length === 2 ? 2000 + parseInt(parts[2]) : parseInt(parts[2]);
 
-    // Heuristic: If first part > 12, it must be the day (DD/MM/YYYY)
     if (d > 12) {
       const manualDate = new Date(y, m, d);
       if (!isNaN(manualDate.getTime())) return manualDate.toISOString().split('T')[0];
     } else {
-      // Ambiguous case, default to DD/MM/YYYY for Omani context
       const manualDate = new Date(y, m, d);
       if (!isNaN(manualDate.getTime())) return manualDate.toISOString().split('T')[0];
     }
@@ -117,7 +113,6 @@ export function VoucherTable() {
   const { data: ledgersData, isLoading: ledgersLoading } = useCollection<Ledger>(ledgersQuery);
   const ledgers = ledgersData || [];
 
-  // Automatically select the first ledger if none is active, but NEVER create one automatically
   useEffect(() => {
     if (ledgers.length > 0 && !activeLedgerId) {
       setActiveLedgerId(ledgers[0].id);
@@ -168,7 +163,7 @@ export function VoucherTable() {
     if (!file || !firestore || !user) return;
 
     setIsImporting(true);
-    toast({ title: "Reading File", description: "Processing all sheets..." });
+    toast({ title: "Reading File", description: "Determining sheet count..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -177,7 +172,6 @@ export function VoucherTable() {
         const workbook = XLSX.read(data, { type: "binary" });
         
         let totalImportedCount = 0;
-        // Build a fresh map to avoid duplicates during a single session import
         const existingLedgerMap = new Map<string, string>();
         ledgers.forEach(l => existingLedgerMap.set(l.name.trim().toLowerCase(), l.id));
 
@@ -187,7 +181,6 @@ export function VoucherTable() {
           
           if (json.length === 0) continue;
 
-          // Check if this sheet name already exists as a ledger tab
           let targetLedgerId = existingLedgerMap.get(sheetName.trim().toLowerCase());
           
           if (!targetLedgerId) {
@@ -207,7 +200,6 @@ export function VoucherTable() {
             if (methodStr.includes("cheque")) method = "Cheque";
             if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
 
-            // Improved Voucher No identification
             const vNo = row["Voucher No"] || row["Voucher No."] || row["Sl No"] || row["SL NO"] || row["No"] || row["#"] || row["Serial No"];
 
             return {
@@ -231,7 +223,7 @@ export function VoucherTable() {
           }
         }
 
-        toast({ title: "Import Complete", description: `Processed ${totalImportedCount} rows across ${workbook.SheetNames.length} sheets.` });
+        toast({ title: "Import Complete", description: `Synced ${totalImportedCount} entries across ${workbook.SheetNames.length} sheets.` });
       } catch (error) {
         console.error("Import error:", error);
         toast({ variant: "destructive", title: "Format Error", description: "Excel file could not be parsed." });
@@ -249,7 +241,17 @@ export function VoucherTable() {
       v.recipient.toLowerCase().includes(searchTerm.toLowerCase()) ||
       v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
     )
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    .sort((a, b) => {
+      // Sort by date descending
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      if (dateB !== dateA) return dateB - dateA;
+      
+      // Secondary sort: numeric voucher number extraction
+      const numA = parseInt(a.voucherNo.replace(/\D/g, '')) || 0;
+      const numB = parseInt(b.voucherNo.replace(/\D/g, '')) || 0;
+      return numB - numA;
+    });
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredVouchers.length && filteredVouchers.length > 0) {

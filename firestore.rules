@@ -1,12 +1,12 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Universal access rule for authenticated users.
-    // This allows anonymous sessions to manage the ledger and its sheets.
+    // Universal access rule for authenticated users to ensure anonymous sessions work correctly.
+    // This provides full clearance across all collections.
     match /{document=**} {
       allow read, write: if request.auth != null;
     }
     
-    // Deployment trigger version: v12.6.0 - Simplified broad access rule
+    // Deployment trigger version: v12.7.0 - Broad authenticated access
   }
 }
