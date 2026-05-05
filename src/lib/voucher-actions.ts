@@ -138,6 +138,20 @@ export function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>, db: Fi
   return { success: true, id };
 }
 
+export async function updateVoucher(id: string, voucherData: Partial<Voucher>, db: Firestore) {
+  const docRef = doc(db, VOUCHERS_COLLECTION, id);
+  
+  await updateDoc(docRef, voucherData).catch((error) => {
+    errorEmitter.emit('permission-error', new FirestorePermissionError({
+      path: docRef.path,
+      operation: 'update',
+      requestResourceData: voucherData
+    }));
+  });
+
+  return { success: true };
+}
+
 export async function getVoucherById(id: string): Promise<Voucher | null> {
   const db = getDb();
   try {

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -25,13 +24,14 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { createVoucher, getLedgers } from "@/lib/voucher-actions";
+import { createVoucher, updateVoucher, getLedgers } from "@/lib/voucher-actions";
 import { convertAmountToWords } from "@/lib/amount-utils";
-import { Save, Loader2, FileText } from "lucide-react";
+import { Save, Loader2, FileText, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Ledger, Voucher } from "@/lib/types";
 import { useFirestore } from "@/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
+import Link from "next/link";
 
 const formSchema = z.object({
   voucherNo: z.string().min(1, "Voucher number is required"),
@@ -47,27 +47,33 @@ const formSchema = z.object({
   ledgerId: z.string().min(1, "Ledger selection is required"),
 });
 
-export function VoucherForm() {
+interface VoucherFormProps {
+  voucher?: Voucher | null;
+}
+
+export function VoucherForm({ voucher }: VoucherFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const router = useRouter();
   const { toast } = useToast();
   const db = useFirestore();
 
+  const isEditMode = !!voucher;
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      voucherNo: "",
-      date: new Date().toISOString().split('T')[0],
-      recipient: "",
-      amountRO: 0,
-      amountBz: 0,
-      sumInWords: "Sum of Rial Omani Zero only",
-      paymentMethod: 'Cash',
-      bankName: "",
-      refNo: "",
-      purpose: "",
-      ledgerId: "",
+      voucherNo: voucher?.voucherNo || "",
+      date: voucher?.date || new Date().toISOString().split('T')[0],
+      recipient: voucher?.recipient || "",
+      amountRO: voucher?.amountRO || 0,
+      amountBz: voucher?.amountBz || 0,
+      sumInWords: voucher?.sumInWords || "Sum of Rial Omani Zero only",
+      paymentMethod: voucher?.paymentMethod || 'Cash',
+      bankName: voucher?.bankName || "",
+      refNo: voucher?.refNo || "",
+      purpose: voucher?.purpose || "",
+      ledgerId: voucher?.ledgerId || "",
     },
   });
 
@@ -77,16 +83,16 @@ export function VoucherForm() {
     async function loadLedgers() {
       const data = await getLedgers();
       setLedgers(data);
-      if (data.length > 0 && !selectedLedgerId) {
+      if (data.length > 0 && !selectedLedgerId && !isEditMode) {
         form.setValue("ledgerId", data[0].id);
       }
     }
     loadLedgers();
-  }, [form, selectedLedgerId]);
+  }, [form, selectedLedgerId, isEditMode]);
 
   useEffect(() => {
     async function calculateNextNo() {
-      if (!selectedLedgerId || !db) return;
+      if (!selectedLedgerId || !db || isEditMode) return;
 
       const q = query(collection(db, "vouchers"), where("ledgerId", "==", selectedLedgerId));
       const snapshot = await getDocs(q);
@@ -100,7 +106,7 @@ export function VoucherForm() {
       form.setValue("voucherNo", String(nextNo));
     }
     calculateNextNo();
-  }, [selectedLedgerId, db, form]);
+  }, [selectedLedgerId, db, form, isEditMode]);
 
   const amountRO = form.watch("amountRO");
   const amountBz = form.watch("amountBz");
@@ -110,23 +116,39 @@ export function VoucherForm() {
     form.setValue("sumInWords", convertAmountToWords(totalAmount));
   }, [amountRO, amountBz, form]);
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
+  async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
-    const res = createVoucher(values, db);
-    toast({ 
-      title: "Saving Record", 
-      description: "Generating your new sequential voucher..." 
-    });
-    router.push(`/vouchers/${res.id}`);
+    try {
+      if (isEditMode && voucher) {
+        await updateVoucher(voucher.id, values, db);
+        toast({ title: "Updated Record", description: "The voucher has been successfully updated." });
+        router.push(`/vouchers/${voucher.id}`);
+      } else {
+        const res = createVoucher(values, db);
+        toast({ title: "Saving Record", description: "Generating your new sequential voucher..." });
+        router.push(`/vouchers/${res.id}`);
+      }
+    } catch (error) {
+      toast({ variant: "destructive", title: "Operation Failed", description: "There was an error saving the record." });
+      setIsSubmitting(false);
+    }
   }
 
   return (
     <Card className="w-full max-w-4xl mx-auto shadow-lg border-primary/20">
       <CardHeader className="bg-primary/5 border-b">
-        <CardTitle className="flex items-center gap-2 text-primary font-headline">
-          <FileText className="w-5 h-5" />
-          Create New Voucher
-        </CardTitle>
+        <div className="flex justify-between items-center">
+          <CardTitle className="flex items-center gap-2 text-primary font-headline">
+            <FileText className="w-5 h-5" />
+            {isEditMode ? `Edit Voucher ${voucher?.voucherNo}` : "Create New Voucher"}
+          </CardTitle>
+          <Link href={isEditMode ? `/vouchers/${voucher?.id}` : "/"}>
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back
+            </Button>
+          </Link>
+        </div>
       </CardHeader>
       <CardContent className="pt-6">
         <Form {...form}>
@@ -294,7 +316,7 @@ export function VoucherForm() {
             />
 
             <Button type="submit" className="w-full h-12 text-lg" disabled={isSubmitting}>
-              {isSubmitting ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Recording...</> : <><Save className="mr-2 h-5 w-5" /> Save Voucher</>}
+              {isSubmitting ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Saving...</> : <><Save className="mr-2 h-5 w-5" /> {isEditMode ? "Update Voucher" : "Save Voucher"}</>}
             </Button>
           </form>
         </Form>

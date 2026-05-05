@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -233,7 +232,6 @@ export function VoucherTable() {
       v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
     )
     .sort((a, b) => {
-      // STRICT NUMERIC ASCENDING SORT
       const numA = parseInt(a.voucherNo) || 0;
       const numB = parseInt(b.voucherNo) || 0;
       return numA - numB;
@@ -352,7 +350,7 @@ export function VoucherTable() {
                 <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-64 px-2">Purpose</TableHead>
                 <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-24 px-2">Bank</TableHead>
                 <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-24 px-2">Ref No</TableHead>
-                <TableHead className="text-white font-bold text-[11px] w-12 px-2 text-center no-print">View</TableHead>
+                <TableHead className="text-white font-bold text-[11px] w-24 px-2 text-center no-print">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -390,10 +388,15 @@ export function VoucherTable() {
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate" title={v.purpose}>{v.purpose}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate italic">{v.bankName || "-"}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate font-mono">{v.refNo || "-"}</TableCell>
-                    <TableCell className="px-2 py-1 text-center no-print">
+                    <TableCell className="px-2 py-1 flex items-center justify-center gap-1 no-print">
                       <Link href={`/vouchers/${v.id}`}>
                         <Button variant="ghost" size="icon" className="h-6 w-6 text-primary hover:text-white hover:bg-primary">
                           <Eye className="w-3.5 h-3.5" />
+                        </Button>
+                      </Link>
+                      <Link href={`/vouchers/${v.id}/edit`}>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-500 hover:text-white hover:bg-slate-500">
+                          <Edit2 className="w-3.5 h-3.5" />
                         </Button>
                       </Link>
                     </TableCell>
