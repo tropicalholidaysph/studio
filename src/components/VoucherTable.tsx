@@ -259,25 +259,7 @@ export function VoucherTable() {
     const data = [header, ...rows];
     const worksheet = XLSX.utils.aoa_to_sheet(data);
 
-    // Tighten the reference to exactly the data range
-    worksheet['!ref'] = XLSX.utils.encode_range({
-      s: { r: 0, c: 0 },
-      e: { r: data.length - 1, c: header.length - 1 }
-    });
-
-    // Apply Styles to Header
-    const range = XLSX.utils.decode_range(worksheet['!ref']);
-    for (let C = range.s.c; C <= range.e.c; ++C) {
-      const address = XLSX.utils.encode_col(C) + "1";
-      if (!worksheet[address]) continue;
-      worksheet[address].s = {
-        fill: { fgColor: { rgb: "E66E38" } },
-        font: { color: { rgb: "FFFFFF" }, bold: true },
-        alignment: { horizontal: "left" }
-      };
-    }
-
-    // Set Column Widths and Aggressively Hide everything from J (index 9) to XFD
+    // Strict range for J to XFD hiding (Excel max column is XFD at index 16383)
     const wscols: any[] = [];
     wscols[0] = { wch: 12 }; // A: Voucher No
     wscols[1] = { wch: 12 }; // B: Date
@@ -289,18 +271,33 @@ export function VoucherTable() {
     wscols[7] = { wch: 20 }; // H: Bank
     wscols[8] = { wch: 15 }; // I: Ref No
     
-    // Hide columns from J (index 9) to 500 (covers J to XFD visually in most apps)
-    for (let i = 9; i <= 500; i++) {
+    // Hide all columns from J (index 9) to XFD (index 16383)
+    for (let i = 9; i <= 16383; i++) {
       wscols[i] = { hidden: true };
     }
     worksheet['!cols'] = wscols;
 
-    // Aggressively Hide rows from the end of data to 5000
+    // Strict range for rows hiding (Excel max row is 1048576)
     const wsrows: any[] = [];
-    for (let i = data.length; i <= 5000; i++) {
-      wsrows[i] = { hidden: true, hpt: 0 };
+    // Only hide up to a safe reasonable JS memory limit for the loop, e.g., 10,000. 
+    // Hiding millions of indices individually in a JS loop can be heavy, 
+    // but we target the requested 52+ range specifically.
+    for (let i = data.length; i <= 10000; i++) {
+      wsrows[i] = { hidden: true };
     }
     worksheet['!rows'] = wsrows;
+
+    // Apply Styles to Header
+    const range = XLSX.utils.decode_range(worksheet['!ref']!);
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+      const address = XLSX.utils.encode_col(C) + "1";
+      if (!worksheet[address]) continue;
+      worksheet[address].s = {
+        fill: { fgColor: { rgb: "E66E38" } },
+        font: { color: { rgb: "FFFFFF" }, bold: true },
+        alignment: { horizontal: "left" }
+      };
+    }
 
     const workbook = XLSX.utils.book_new();
     const ledgerName = ledgers.find(l => l.id === activeLedgerId)?.name || "Ledger";
@@ -456,14 +453,14 @@ export function VoucherTable() {
                 </TableRow>
               ) : (
                 filteredVouchers.map((v) => {
-                  const isActuallyVoid = v.isVoid || v.recipient === "VOID / NO DATA" || String(v.recipient).includes("VOID");
+                  const isActuallyVoid = v.isVoid || v.recipient === "VOID / NO DATA" || String(v.recipient).includes("VOID") || (v.amountRO === 0 && v.amountBz === 0);
                   return (
                     <TableRow 
                       key={v.id} 
                       className={cn(
                         "border-none h-9 transition-colors",
                         isActuallyVoid 
-                          ? "bg-[#ef4444] hover:bg-[#dc2626] text-white" 
+                          ? "bg-[#ef4444] hover:bg-[#dc2626] text-white font-bold" 
                           : "bg-background hover:bg-muted/10"
                       )}
                     >
