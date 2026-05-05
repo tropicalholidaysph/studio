@@ -20,10 +20,10 @@ export function Navbar() {
           <div className="flex items-center gap-2">
             <Link href="/" className="flex items-center gap-2 group">
               <div className="bg-primary text-white p-2 rounded-lg group-hover:bg-primary/90 transition-colors">
-                <span className="font-bold text-xl">TL</span>
+                <span className="font-bold text-xl">TH</span>
               </div>
               <span className="font-headline font-bold text-xl text-foreground hidden sm:block">
-                Tropical Ledger
+                Tropical Holidays
               </span>
             </Link>
           </div>
