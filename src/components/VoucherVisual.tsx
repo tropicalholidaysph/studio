@@ -11,10 +11,8 @@ interface VoucherVisualProps {
 export function VoucherVisual({ voucher }: VoucherVisualProps) {
   return (
     <div className="w-full max-w-[850px] mx-auto bg-[#FEF9E7] p-6 sm:p-10 border border-neutral-300 shadow-xl font-serif text-[#2c3e50] relative overflow-hidden">
-      {/* Decorative inner border */}
       <div className="absolute inset-4 border border-[#d4af37]/20 pointer-events-none" />
 
-      {/* Top Header Information */}
       <div className="flex justify-between items-start mb-6 relative z-10">
         <div className="text-[10px] leading-tight space-y-0.5 w-1/3">
           <p>C.R.: 1209991</p>
@@ -48,12 +46,11 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
           <p>ص.ب : ٨٢١</p>
           <p>الرمز البريدي : ١٣٠</p>
           <p>سلطنة عمان</p>
-          <p>نقال : ٩٥٣٠٤٠٧٧</p>
+          <p>نقال : ١٢٠٩٩٩١</p>
           <p>المكتب : ٢٤٦١٦٥٤١/٢</p>
         </div>
       </div>
 
-      {/* Voucher Title and Number */}
       <div className="flex justify-between items-center mb-8 relative z-10 border-t border-b border-[#d4af37]/30 py-4">
         <div className="flex items-center gap-2">
           <span className="text-lg font-bold text-[#DB0D3A]">No.</span>
@@ -76,7 +73,6 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
         </div>
       </div>
 
-      {/* Main Form Fields */}
       <div className="space-y-6 relative z-10 px-2">
         <div className="flex items-start gap-4">
           <div className="border-2 border-neutral-800 w-[220px]">
@@ -137,7 +133,6 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
         </div>
       </div>
 
-      {/* Footer / Signatures */}
       <div className="grid grid-cols-2 gap-20 mt-16 relative z-10 px-4">
         <div className="flex flex-col gap-1">
           <div className="flex items-end gap-2 w-full">
