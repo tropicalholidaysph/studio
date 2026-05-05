@@ -1,19 +1,31 @@
+
 "use client";
 
+import Image from "next/image";
 import { Voucher } from "@/lib/types";
 import { format } from "date-fns";
+import { PlaceHolderImages } from "@/lib/placeholder-images";
 
 interface VoucherVisualProps {
   voucher: Voucher;
 }
 
 export function VoucherVisual({ voucher }: VoucherVisualProps) {
+  const logoPath = PlaceHolderImages.find(img => img.id === 'logo')?.imageUrl || "/logo.png";
+
   return (
     <div className="w-full max-w-[800px] mx-auto bg-[#FFFDE7] p-8 border-[3px] border-primary shadow-lg font-serif">
       <div className="flex justify-between items-start mb-8 border-b-2 border-primary pb-4">
         <div className="space-y-1">
-          <div className="w-24 h-24 bg-primary/20 flex items-center justify-center rounded-lg border-2 border-primary dashed">
-            <span className="text-primary font-bold text-xs text-center">COMPANY LOGO</span>
+          <div className="w-24 h-24 relative flex items-center justify-center rounded-lg border-2 border-primary border-dashed bg-white">
+            <Image 
+              src={logoPath} 
+              alt="Tropical Holidays Logo" 
+              width={80} 
+              height={80}
+              className="object-contain p-1"
+              data-ai-hint="tropical palm"
+            />
           </div>
           <h1 className="text-2xl font-bold text-primary tracking-widest mt-2 uppercase">Tropical Holidays</h1>
           <p className="text-xs text-muted-foreground">P.O. Box 1234, Muscat, Oman</p>
