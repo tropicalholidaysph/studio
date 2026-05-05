@@ -150,7 +150,7 @@ export function VoucherTable() {
     if (!file || !firestore || !user) return;
 
     setIsImporting(true);
-    toast({ title: "Importing Ledger", description: "Cleaning empty rows and processing data..." });
+    toast({ title: "Importing Ledger", description: "Processing clean sequential data..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -186,10 +186,8 @@ export function VoucherTable() {
             const purpose = String(row["Being (Purpose)"] || row["Purpose"] || "").trim();
             const vNoRaw = row["Voucher No"] || row["Sl No"] || row["No"] || row["#"];
 
-            // SKIP empty rows entirely as requested
-            if (!recipient && ro === 0 && bz === 0 && !purpose && !vNoRaw) {
-              return;
-            }
+            // Skip completely blank physical rows if they truly have NO identifying info
+            if (!recipient && ro === 0 && bz === 0 && !purpose && !vNoRaw) return;
 
             const vNo = vNoRaw ? String(vNoRaw).replace(/\D/g, '').trim() : String(index + 1);
             const isVoid = !recipient || (ro === 0 && bz === 0);
@@ -222,7 +220,7 @@ export function VoucherTable() {
           }
         }
 
-        toast({ title: "Sync Complete", description: `Synchronized ${totalImportedCount} clean entries.` });
+        toast({ title: "Sync Complete", description: `Synchronized ${totalImportedCount} entries.` });
       } catch (error) {
         toast({ variant: "destructive", title: "Import Error", description: "Failed to process spreadsheet." });
       } finally {
@@ -234,11 +232,10 @@ export function VoucherTable() {
   };
 
   const handleExport = () => {
-    // Only export rows that actually have data (recipient or amount)
-    const validVouchers = filteredVouchers.filter(v => v.recipient !== "VOID / NO DATA" || v.amountRO > 0);
-    if (validVouchers.length === 0) return;
+    // Include all filtered vouchers, including VOIDs as requested
+    if (filteredVouchers.length === 0) return;
     
-    const exportData = validVouchers.map(v => ({
+    const exportData = filteredVouchers.map(v => ({
       "Voucher No": v.voucherNo,
       "Date": v.date,
       "Paid To": v.recipient,
@@ -252,10 +249,9 @@ export function VoucherTable() {
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
 
-    // Set professional column widths (fitted)
     const wscols = [
-      { wch: 12 }, // Voucher No
-      { wch: 14 }, // Date
+      { wch: 15 }, // Voucher No
+      { wch: 15 }, // Date
       { wch: 35 }, // Paid To
       { wch: 15 }, // Amount RO
       { wch: 10 }, // Amount Bz
@@ -279,6 +275,7 @@ export function VoucherTable() {
       v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
     )
     .sort((a, b) => {
+      // Sort Ascending (1-50) as requested for strict sequential ledger
       const numA = parseInt(a.voucherNo) || 0;
       const numB = parseInt(b.voucherNo) || 0;
       if (numA !== numB) return numA - numB;
@@ -385,14 +382,14 @@ export function VoucherTable() {
         {ledgers.length === 0 && !ledgersLoading ? (
           <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
             <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
-            <h3 className="text-lg font-bold mb-1">Spreadsheet Dashboard</h3>
-            <p className="max-w-xs text-sm opacity-70">Upload your Excel files. The system handles 50 clean rows per sheet sequentially.</p>
+            <h3 className="text-lg font-bold mb-1">Sequential Ledger</h3>
+            <p className="max-w-xs text-sm opacity-70">Upload your Excel files to populate the digital ledger.</p>
           </div>
         ) : (
           <Table className="border-collapse table-fixed w-full">
             <TableHeader className="bg-slate-900 dark:bg-slate-950 sticky top-0 z-10">
               <TableRow className="hover:bg-transparent border-none h-10">
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-10 px-2 text-center no-print">
+                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-10 px-2 text-left no-print">
                   <Checkbox 
                     checked={filteredVouchers.length > 0 && selectedIds.size === filteredVouchers.length}
                     onCheckedChange={toggleSelectAll}
@@ -408,7 +405,7 @@ export function VoucherTable() {
                 <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-64 px-2 text-left">Purpose</TableHead>
                 <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2 text-left">Bank</TableHead>
                 <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2 text-left">Ref No</TableHead>
-                <TableHead className="text-white font-bold text-[11px] w-24 px-2 text-center no-print">Actions</TableHead>
+                <TableHead className="text-white font-bold text-[11px] w-24 px-2 text-left no-print">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -422,28 +419,28 @@ export function VoucherTable() {
                 filteredVouchers.map((v) => (
                   <TableRow 
                     key={v.id} 
-                    className="bg-background hover:bg-muted/30 border-b border-border/50"
+                    className="bg-background hover:bg-muted/10 border-none h-9"
                   >
-                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-center no-print">
+                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-left no-print">
                       <Checkbox 
                         checked={selectedIds.has(v.id)}
                         onCheckedChange={() => toggleSelect(v.id)}
                       />
                     </TableCell>
-                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] font-mono font-bold text-left">
+                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] font-mono font-bold text-left">
                       {v.voucherNo}
                     </TableCell>
-                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] text-left">{v.isVoid && v.recipient === "VOID / NO DATA" ? "VOID" : v.date}</TableCell>
-                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] font-bold text-left">
+                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] text-left">{v.date}</TableCell>
+                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] font-semibold text-left">
                       {v.recipient}
                     </TableCell>
-                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-left font-black text-[11px]">{v.isVoid ? "0" : v.amountRO.toLocaleString()}</TableCell>
-                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-left font-mono text-[11px]">{v.isVoid ? "000" : v.amountBz.toString().padStart(3, '0')}</TableCell>
-                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[10px] uppercase font-semibold text-left">{v.paymentMethod}</TableCell>
-                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] truncate text-left" title={v.purpose}>{v.purpose}</TableCell>
-                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] truncate italic text-left">{v.bankName || "-"}</TableCell>
-                    <TableCell className="border-r border-border/50 px-2 py-1.5 text-[11px] truncate font-mono text-left">{v.refNo || "-"}</TableCell>
-                    <TableCell className="px-2 py-1 flex items-center justify-center gap-1 no-print">
+                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-left font-black text-[11px]">{v.amountRO.toLocaleString()}</TableCell>
+                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-left font-mono text-[11px]">{v.amountBz.toString().padStart(3, '0')}</TableCell>
+                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[10px] uppercase font-semibold text-left">{v.paymentMethod}</TableCell>
+                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] truncate text-left" title={v.purpose}>{v.purpose}</TableCell>
+                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] truncate italic text-left">{v.bankName || "-"}</TableCell>
+                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] truncate font-mono text-left">{v.refNo || "-"}</TableCell>
+                    <TableCell className="border-b border-border/50 px-2 py-1 flex items-center justify-start gap-1 no-print">
                       <Link href={`/vouchers/${v.id}`}>
                         <Button variant="ghost" size="icon" className="h-6 w-6 text-primary">
                           <Eye className="w-3.5 h-3.5" />
