@@ -55,33 +55,40 @@ import { collection, query, orderBy, where } from "firebase/firestore";
 
 /**
  * Robust date parsing for Excel imports.
+ * Handles DD/MM/YYYY, MM/DD/YYYY, and Excel serial numbers.
  */
 function parseExcelDate(val: any): string {
   if (!val) return new Date().toISOString().split('T')[0];
   
   if (typeof val === 'number') {
+    // Excel base date is Dec 30, 1899
     const date = new Date(Math.round((val - 25569) * 864e5));
     return isNaN(date.getTime()) ? new Date().toISOString().split('T')[0] : date.toISOString().split('T')[0];
   }
 
   const str = String(val).trim();
+  // Try standard JS parsing first
   const date = new Date(str);
   if (!isNaN(date.getTime())) {
     return date.toISOString().split('T')[0];
   }
 
+  // Handle DD/MM/YYYY or MM/DD/YYYY manually
   const parts = str.split(/[\/\-\.]/);
   if (parts.length === 3) {
     let d = parseInt(parts[0]);
-    let m = parseInt(parts[1]) - 1;
+    let m = parseInt(parts[1]) - 1; // 0-indexed
     let y = parts[2].length === 2 ? 2000 + parseInt(parts[2]) : parseInt(parts[2]);
 
-    if (d > 31 && y <= 31) {
-      const tmp = d; d = y; y = tmp;
+    // Heuristic: If first part > 12, it must be the day
+    if (d > 12) {
+      const manualDate = new Date(y, m, d);
+      if (!isNaN(manualDate.getTime())) return manualDate.toISOString().split('T')[0];
+    } else {
+      // Ambiguous case, default to DD/MM/YYYY for Omani context
+      const manualDate = new Date(y, m, d);
+      if (!isNaN(manualDate.getTime())) return manualDate.toISOString().split('T')[0];
     }
-    
-    const manualDate = new Date(y, m, d);
-    if (!isNaN(manualDate.getTime())) return manualDate.toISOString().split('T')[0];
   }
 
   return new Date().toISOString().split('T')[0];
@@ -110,7 +117,7 @@ export function VoucherTable() {
   const { data: ledgersData, isLoading: ledgersLoading } = useCollection<Ledger>(ledgersQuery);
   const ledgers = ledgersData || [];
 
-  // Automatically select the first ledger if none is active
+  // Automatically select the first ledger if none is active, but don't create one
   useEffect(() => {
     if (ledgers.length > 0 && !activeLedgerId) {
       setActiveLedgerId(ledgers[0].id);
@@ -128,7 +135,6 @@ export function VoucherTable() {
   const { data: vouchersData, isLoading: vouchersLoading } = useCollection<Voucher>(vouchersQuery);
   const vouchers = vouchersData || [];
 
-  // Reset selection when changing tabs
   useEffect(() => {
     setSelectedIds(new Set());
   }, [activeLedgerId]);
@@ -139,31 +145,30 @@ export function VoucherTable() {
     setActiveLedgerId(ledger.id);
     setNewLedgerName("");
     setIsAddingLedger(false);
-    toast({ title: "Sheet Created", description: `"${newLedgerName}" is now active.` });
+    toast({ title: "Sheet Created" });
   }
 
   async function handleRenameLedger() {
     if (!editingLedger || !editName.trim() || !firestore) return;
     await renameLedger(editingLedger.id, editName);
     setEditingLedger(null);
-    toast({ title: "Renamed", description: `Sheet updated to "${editName}"` });
+    toast({ title: "Renamed Successfully" });
   }
 
   async function handleDeleteLedger(id: string) {
     await deleteLedger(id);
     if (activeLedgerId === id) {
-      const nextLedger = ledgers.find(l => l.id !== id);
-      setActiveLedgerId(nextLedger?.id || "");
+      setActiveLedgerId("");
     }
-    toast({ title: "Deleted", description: "Sheet has been removed." });
+    toast({ title: "Sheet Deleted" });
   }
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !firestore) return;
+    if (!file || !firestore || !user) return;
 
     setIsImporting(true);
-    toast({ title: "Importing File", description: "Processing your sheets..." });
+    toast({ title: "Reading File", description: "Mapping sheets to your ledger..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -172,8 +177,9 @@ export function VoucherTable() {
         const workbook = XLSX.read(data, { type: "binary" });
         
         let totalImportedCount = 0;
+        // Build a fresh map to avoid duplicates during a single session import
         const existingLedgerMap = new Map<string, string>();
-        ledgers.forEach(l => existingLedgerMap.set(l.name.toLowerCase(), l.id));
+        ledgers.forEach(l => existingLedgerMap.set(l.name.trim().toLowerCase(), l.id));
 
         for (const sheetName of workbook.SheetNames) {
           const worksheet = workbook.Sheets[sheetName];
@@ -181,13 +187,12 @@ export function VoucherTable() {
           
           if (json.length === 0) continue;
 
-          let targetLedgerId = existingLedgerMap.get(sheetName.toLowerCase());
+          let targetLedgerId = existingLedgerMap.get(sheetName.trim().toLowerCase());
           
           if (!targetLedgerId) {
-            const newLedger = await createLedger(sheetName, firestore);
+            const newLedger = await createLedger(sheetName.trim(), firestore);
             targetLedgerId = newLedger.id;
-            existingLedgerMap.set(sheetName.toLowerCase(), targetLedgerId);
-            // Auto select the first newly created ledger if nothing is active
+            existingLedgerMap.set(sheetName.trim().toLowerCase(), targetLedgerId);
             if (!activeLedgerId) setActiveLedgerId(targetLedgerId);
           }
 
@@ -201,7 +206,6 @@ export function VoucherTable() {
             if (methodStr.includes("cheque")) method = "Cheque";
             if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
 
-            // Map Voucher Number properly (Sl No is common in vouchers)
             const vNo = row["Voucher No"] || row["Voucher No."] || row["Sl No"] || row["SL NO"] || row["No"] || row["#"] || row["Serial No"];
 
             return {
@@ -215,7 +219,7 @@ export function VoucherTable() {
               bankName: String(row["Bank"] || ""),
               refNo: String(row["Cheque/Ref No"] || row["Ref"] || row["CHQ NO"] || ""),
               purpose: String(row["Being (Purpose)"] || row["Purpose"] || row["DESCRIPTION"] || "N/A"),
-              ledgerId: targetLedgerId
+              ledgerId: targetLedgerId as string
             };
           });
 
@@ -225,10 +229,10 @@ export function VoucherTable() {
           }
         }
 
-        toast({ title: "Import Complete", description: `Processed ${totalImportedCount} vouchers across ${workbook.SheetNames.length} sheets.` });
+        toast({ title: "Import Complete", description: `Processed ${totalImportedCount} rows across ${workbook.SheetNames.length} sheets.` });
       } catch (error) {
         console.error("Import error:", error);
-        toast({ variant: "destructive", title: "Import Error", description: "Could not process Excel file." });
+        toast({ variant: "destructive", title: "Format Error", description: "Excel file could not be parsed." });
       } finally {
         setIsImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -271,7 +275,7 @@ export function VoucherTable() {
       setSelectedIds(new Set());
       toast({ title: "Records Deleted" });
     } catch (e) {
-      toast({ variant: "destructive", title: "Deletion Failed" });
+      toast({ variant: "destructive", title: "Error Deleting" });
     } finally {
       setIsBulkDeleting(false);
     }
@@ -311,15 +315,15 @@ export function VoucherTable() {
             size="sm"
             onClick={() => fileInputRef.current?.click()}
             disabled={isImporting}
-            className="h-9 text-xs flex items-center gap-2 border-[#E66E38] text-[#E66E38] hover:bg-[#E66E38] hover:text-white"
+            className="h-9 text-xs border-primary text-primary hover:bg-primary hover:text-white"
           >
             {isImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
             Import Ledger File
           </Button>
           <Link href="/vouchers/new">
-            <Button size="sm" className="h-9 text-xs bg-[#E66E38] hover:bg-[#E66E38]/90 flex items-center gap-2">
+            <Button size="sm" className="h-9 text-xs bg-primary hover:bg-primary/90">
               <Plus className="w-3 h-3" />
-              New Record
+              New Entry
             </Button>
           </Link>
         </div>
@@ -327,16 +331,16 @@ export function VoucherTable() {
 
       <div className="flex-1 overflow-auto relative">
         {(isImporting || vouchersLoading || ledgersLoading || isBulkDeleting) && (
-          <div className="absolute top-0 left-0 right-0 z-20 h-0.5 bg-orange-100 overflow-hidden">
-            <div className="h-full bg-[#E66E38] animate-[shimmer_1s_infinite_linear] bg-[length:200%_100%] bg-gradient-to-r from-[#E66E38]/20 via-[#E66E38] to-[#E66E38]/20" />
+          <div className="absolute top-0 left-0 right-0 z-20 h-0.5 bg-primary/20 overflow-hidden">
+            <div className="h-full bg-primary animate-[shimmer_1s_infinite_linear] bg-[length:200%_100%] bg-gradient-to-r from-primary/20 via-primary to-primary/20" />
           </div>
         )}
         
         {ledgers.length === 0 && !ledgersLoading ? (
           <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8 text-center">
             <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
-            <h3 className="text-lg font-bold text-slate-600 mb-1">No Sheets Found</h3>
-            <p className="max-w-xs text-sm">Please import an Excel file or create a manual sheet to start managing vouchers.</p>
+            <h3 className="text-lg font-bold text-slate-600 mb-1">No Data Detected</h3>
+            <p className="max-w-xs text-sm">Import an Excel file to see your records and sheets here.</p>
           </div>
         ) : (
           <Table className="border-collapse table-fixed w-full">
@@ -365,7 +369,7 @@ export function VoucherTable() {
               {filteredVouchers.length === 0 && !vouchersLoading ? (
                 <TableRow>
                   <TableCell colSpan={11} className="h-64 text-center text-slate-400 italic text-xs">
-                    No records found in this sheet.
+                    No matching records found.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -380,7 +384,7 @@ export function VoucherTable() {
                         onCheckedChange={() => toggleSelect(v.id)}
                       />
                     </TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-mono text-[#DB0D3A] font-bold">{v.voucherNo}</TableCell>
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-mono text-destructive font-bold">{v.voucherNo}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px]">{v.date}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-bold text-slate-800">{v.recipient}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] text-right font-black">{v.amountRO.toLocaleString()}</TableCell>
@@ -391,7 +395,7 @@ export function VoucherTable() {
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate font-mono">{v.refNo || "-"}</TableCell>
                     <TableCell className="px-2 py-1 text-center no-print">
                       <Link href={`/vouchers/${v.id}`}>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-[#E66E38] hover:text-white hover:bg-[#E66E38]">
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-primary hover:text-white hover:bg-primary">
                           <Eye className="w-3.5 h-3.5" />
                         </Button>
                       </Link>
@@ -446,10 +450,10 @@ export function VoucherTable() {
 
       <Dialog open={isAddingLedger} onOpenChange={setIsAddingLedger}>
         <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader><DialogTitle>New Sheet</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Create New Sheet</DialogTitle></DialogHeader>
           <div className="py-4">
             <Input 
-              placeholder="Sheet Name" 
+              placeholder="e.g. Sales Jan 2024" 
               value={newLedgerName} 
               onChange={(e) => setNewLedgerName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddLedger()}
@@ -478,7 +482,7 @@ export function VoucherTable() {
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setEditingLedger(null)}>Cancel</Button>
-            <Button size="sm" onClick={handleRenameLedger}>Save</Button>
+            <Button size="sm" onClick={handleRenameLedger}>Save Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
