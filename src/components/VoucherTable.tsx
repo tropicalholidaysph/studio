@@ -260,25 +260,27 @@ export function VoucherTable() {
     const data = [header, ...rows];
     const worksheet = XLSX.utils.aoa_to_sheet(data);
 
+    // CRITICAL: Turn off gridlines for the entire sheet.
+    // This removes all lines from the unused area without painting cells, 
+    // which keeps the file size extremely small (KB instead of MB).
+    worksheet['!views'] = [{ showGridLines: false }];
+
     // Optimized Column Widths
-    const wscols: any[] = [];
-    wscols[0] = { wch: 12 }; // A: Voucher No
-    wscols[1] = { wch: 12 }; // B: Date
-    wscols[2] = { wch: 35 }; // C: Paid To
-    wscols[3] = { wch: 14 }; // D: Amount RO
-    wscols[4] = { wch: 8 };  // E: Amount Bz
-    wscols[5] = { wch: 18 }; // F: Method
-    wscols[6] = { wch: 45 }; // G: Purpose
-    wscols[7] = { wch: 20 }; // H: Bank
-    wscols[8] = { wch: 15 }; // I: Ref No
+    const wscols: any[] = [
+      { wch: 12 }, // A: Voucher No
+      { wch: 12 }, // B: Date
+      { wch: 35 }, // C: Paid To
+      { wch: 14 }, // D: Amount RO
+      { wch: 8 },  // E: Amount Bz
+      { wch: 18 }, // F: Method
+      { wch: 45 }, // G: Purpose
+      { wch: 20 }, // H: Bank
+      { wch: 15 }  // I: Ref No
+    ];
     worksheet['!cols'] = wscols;
 
     const dataRows = rows.length + 1;
     const dataCols = header.length;
-    
-    // "WHITE PAINT" TECHNIQUE RANGE
-    const maxR = 2000; 
-    const maxC = 100;
 
     const borderStyle = {
       top: { style: "thin", color: { rgb: "CCCCCC" } },
@@ -287,52 +289,32 @@ export function VoucherTable() {
       right: { style: "thin", color: { rgb: "CCCCCC" } }
     };
 
-    const noBorderStyle = {
-      top: { style: "none" },
-      bottom: { style: "none" },
-      left: { style: "none" },
-      right: { style: "none" }
-    };
-
-    // Explicitly iterate and style every cell in the target range to remove gridlines
-    for (let R = 0; R <= maxR; ++R) {
-      for (let C = 0; C <= maxC; ++C) {
+    // Apply styles ONLY to the data table range.
+    // Everything else remains white and line-free due to the !views setting.
+    for (let R = 0; R < dataRows; ++R) {
+      for (let C = 0; C < dataCols; ++C) {
         const addr = XLSX.utils.encode_cell({ r: R, c: C });
+        if (!worksheet[addr]) continue;
         
-        // Initialize cell if it doesn't exist so we can style it
-        if (!worksheet[addr]) {
-          worksheet[addr] = { v: "", t: "s", s: {} };
-        } else if (!worksheet[addr].s) {
-          worksheet[addr].s = {};
-        }
+        if (!worksheet[addr].s) worksheet[addr].s = {};
 
-        // Apply white background to EVERYTHING in the range to hide gridlines
+        // Apply borders only to our data table to make it "fitted"
+        worksheet[addr].s.border = borderStyle;
         worksheet[addr].s.fill = { 
           patternType: "solid",
           fgColor: { rgb: "FFFFFF" } 
         };
 
-        // If it's part of the data table, apply borders and specific headers
-        if (R < dataRows && C < dataCols) {
-          worksheet[addr].s.border = borderStyle;
-          
-          // Header Styling (Tropical Holidays Orange)
-          if (R === 0) {
-            worksheet[addr].s.fill = { 
-              patternType: "solid",
-              fgColor: { rgb: "E66E38" } 
-            };
-            worksheet[addr].s.font = { color: { rgb: "FFFFFF" }, bold: true };
-          }
-        } else {
-          // Explicitly ensure NO borders for the surrounding area to keep it pure white
-          worksheet[addr].s.border = noBorderStyle;
+        // Header Styling (Tropical Holidays Orange)
+        if (R === 0) {
+          worksheet[addr].s.fill = { 
+            patternType: "solid",
+            fgColor: { rgb: "E66E38" } 
+          };
+          worksheet[addr].s.font = { color: { rgb: "FFFFFF" }, bold: true };
         }
       }
     }
-
-    // Update the worksheet range to include all "painted" cells
-    worksheet['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } });
 
     const workbook = XLSX.utils.book_new();
     const ledgerName = ledgers.find(l => l.id === activeLedgerId)?.name || "Ledger";
