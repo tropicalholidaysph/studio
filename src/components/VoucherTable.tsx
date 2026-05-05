@@ -259,7 +259,7 @@ export function VoucherTable() {
     const data = [header, ...rows];
     const worksheet = XLSX.utils.aoa_to_sheet(data);
 
-    // Strict range for J to XFD hiding (Excel max column is XFD at index 16383)
+    // Set specific column widths for visibility
     const wscols: any[] = [];
     wscols[0] = { wch: 12 }; // A: Voucher No
     wscols[1] = { wch: 12 }; // B: Date
@@ -271,23 +271,21 @@ export function VoucherTable() {
     wscols[7] = { wch: 20 }; // H: Bank
     wscols[8] = { wch: 15 }; // I: Ref No
     
-    // Hide all columns from J (index 9) to XFD (index 16383)
+    // HIDE ALL COLUMNS from J (index 9) to XFD (maximum column limit 16383)
     for (let i = 9; i <= 16383; i++) {
       wscols[i] = { hidden: true };
     }
     worksheet['!cols'] = wscols;
 
-    // Strict range for rows hiding (Excel max row is 1048576)
+    // HIDE ALL ROWS from after the data table to the maximum Excel limit (1,048,576)
     const wsrows: any[] = [];
-    // Only hide up to a safe reasonable JS memory limit for the loop, e.g., 10,000. 
-    // Hiding millions of indices individually in a JS loop can be heavy, 
-    // but we target the requested 52+ range specifically.
-    for (let i = data.length; i <= 10000; i++) {
+    // Index starts at 0, data.length gives the row after the last data row
+    for (let i = data.length; i <= 1048575; i++) {
       wsrows[i] = { hidden: true };
     }
     worksheet['!rows'] = wsrows;
 
-    // Apply Styles to Header
+    // Apply Styles to Header (Orange bg, White text)
     const range = XLSX.utils.decode_range(worksheet['!ref']!);
     for (let C = range.s.c; C <= range.e.c; ++C) {
       const address = XLSX.utils.encode_col(C) + "1";
