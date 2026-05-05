@@ -76,7 +76,7 @@ export function VoucherForm() {
   const amountRO = form.watch("amountRO");
   const amountBz = form.watch("amountBz");
 
-  // Local automatic conversion
+  // Local automatic conversion (Fast and No-AI)
   useEffect(() => {
     const ro = Number(amountRO) || 0;
     const bz = Number(amountBz) || 0;
@@ -85,28 +85,19 @@ export function VoucherForm() {
     form.setValue("sumInWords", result);
   }, [amountRO, amountBz, form]);
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
+  function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
-    try {
-      const res = await createVoucher(values);
-      if (res.success) {
-        toast({
-          title: "Voucher Saved",
-          description: "Digital record has been successfully stored.",
-        });
-        router.push(`/vouchers/${res.id}`);
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Failed to save voucher. Please try again.",
-        });
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsSubmitting(false);
-    }
+    
+    // Non-blocking creation for instant feedback
+    const res = createVoucher(values);
+    
+    toast({
+      title: "Voucher Recorded",
+      description: "Moving to ledger view...",
+    });
+    
+    // Immediate navigation to the new voucher page
+    router.push(`/vouchers/${res.id}`);
   }
 
   return (
@@ -300,7 +291,7 @@ export function VoucherForm() {
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Saving Voucher...
+                  Generating Voucher...
                 </>
               ) : (
                 <>

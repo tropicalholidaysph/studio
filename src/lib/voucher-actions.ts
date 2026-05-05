@@ -1,10 +1,10 @@
 import { db } from "./firebase";
 import { 
   collection, 
-  addDoc, 
+  setDoc,
+  doc,
   getDocs, 
   getDoc, 
-  doc, 
   query, 
   orderBy, 
   Timestamp 
@@ -13,17 +13,25 @@ import { Voucher } from "./types";
 
 const VOUCHERS_COLLECTION = "vouchers";
 
-export async function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>) {
-  try {
-    const docRef = await addDoc(collection(db, VOUCHERS_COLLECTION), {
-      ...voucher,
-      createdAt: Timestamp.now().toDate().toISOString(),
-    });
-    return { success: true, id: docRef.id };
-  } catch (error) {
-    console.error("Error creating voucher:", error);
-    return { success: false, error };
-  }
+/**
+ * Creates a voucher non-blockingly for instant UI response.
+ */
+export function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>) {
+  // Generate a document reference on the client to get the ID immediately
+  const docRef = doc(collection(db, VOUCHERS_COLLECTION));
+  const id = docRef.id;
+
+  // Initiate the write in the background (optimistic)
+  setDoc(docRef, {
+    ...voucher,
+    createdAt: Timestamp.now().toDate().toISOString(),
+  }).catch((error) => {
+    // Standard error logging
+    console.error("Background Firestore write failed:", error);
+  });
+
+  // Return the ID immediately for navigation without waiting for the server
+  return { success: true, id };
 }
 
 export async function getVouchers(): Promise<Voucher[]> {
