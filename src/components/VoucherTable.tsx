@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -186,7 +185,6 @@ export function VoucherTable() {
             const purpose = String(row["Being (Purpose)"] || row["Purpose"] || "").trim();
             const vNoRaw = row["Voucher No"] || row["Sl No"] || row["No"] || row["#"];
 
-            // Skip completely blank physical rows
             if (!recipient && ro === 0 && bz === 0 && !purpose && !vNoRaw) return;
 
             const vNo = vNoRaw ? String(vNoRaw).replace(/\D/g, '').trim() : String(index + 1);
@@ -414,49 +412,52 @@ export function VoucherTable() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredVouchers.map((v) => (
-                  <TableRow 
-                    key={v.id} 
-                    className={cn(
-                      "border-none h-9 transition-colors",
-                      v.isVoid 
-                        ? "bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950/30" 
-                        : "bg-background hover:bg-muted/10"
-                    )}
-                  >
-                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-left no-print">
-                      <Checkbox 
-                        checked={selectedIds.has(v.id)}
-                        onCheckedChange={() => toggleSelect(v.id)}
-                      />
-                    </TableCell>
-                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] font-mono font-bold text-left">
-                      {v.voucherNo}
-                    </TableCell>
-                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] text-left">{v.date}</TableCell>
-                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] font-semibold text-left">
-                      {v.recipient}
-                    </TableCell>
-                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-left font-black text-[11px]">{v.amountRO.toLocaleString()}</TableCell>
-                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-left font-mono text-[11px]">{v.amountBz.toString().padStart(3, '0')}</TableCell>
-                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[10px] uppercase font-semibold text-left">{v.paymentMethod}</TableCell>
-                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] truncate text-left" title={v.purpose}>{v.purpose}</TableCell>
-                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] truncate italic text-left">{v.bankName || "-"}</TableCell>
-                    <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] truncate font-mono text-left">{v.refNo || "-"}</TableCell>
-                    <TableCell className="border-b border-border/50 px-2 py-1 flex items-center justify-start gap-1 no-print">
-                      <Link href={`/vouchers/${v.id}`}>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-primary">
-                          <Eye className="w-3.5 h-3.5" />
-                        </Button>
-                      </Link>
-                      <Link href={`/vouchers/${v.id}/edit`}>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground">
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </Link>
-                    </TableCell>
-                  </TableRow>
-                ))
+                filteredVouchers.map((v) => {
+                  const isActuallyVoid = v.isVoid || v.recipient === "VOID / NO DATA";
+                  return (
+                    <TableRow 
+                      key={v.id} 
+                      className={cn(
+                        "border-none h-9 transition-colors",
+                        isActuallyVoid 
+                          ? "bg-red-100/80 hover:bg-red-200 dark:bg-red-900/40 dark:hover:bg-red-900/50" 
+                          : "bg-background hover:bg-muted/10"
+                      )}
+                    >
+                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-left no-print">
+                        <Checkbox 
+                          checked={selectedIds.has(v.id)}
+                          onCheckedChange={() => toggleSelect(v.id)}
+                        />
+                      </TableCell>
+                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] font-mono font-bold text-left">
+                        {v.voucherNo}
+                      </TableCell>
+                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] text-left">{v.date}</TableCell>
+                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] font-semibold text-left">
+                        {v.recipient}
+                      </TableCell>
+                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-left font-black text-[11px]">{v.amountRO.toLocaleString()}</TableCell>
+                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-left font-mono text-[11px]">{v.amountBz.toString().padStart(3, '0')}</TableCell>
+                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[10px] uppercase font-semibold text-left">{v.paymentMethod}</TableCell>
+                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] truncate text-left" title={v.purpose}>{v.purpose}</TableCell>
+                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] truncate italic text-left">{v.bankName || "-"}</TableCell>
+                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] truncate font-mono text-left">{v.refNo || "-"}</TableCell>
+                      <TableCell className="border-b border-border/50 px-2 py-1 flex items-center justify-start gap-1 no-print">
+                        <Link href={`/vouchers/${v.id}`}>
+                          <Button variant="ghost" size="icon" className="h-6 w-6 text-primary">
+                            <Eye className="w-3.5 h-3.5" />
+                          </Button>
+                        </Link>
+                        <Link href={`/vouchers/${v.id}/edit`}>
+                          <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground">
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </Link>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
