@@ -12,7 +12,6 @@ import { useAuth } from "@/firebase";
 import { signInAnonymously } from "firebase/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import { PlaceHolderImages } from "@/app/lib/placeholder-images";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
@@ -20,8 +19,6 @@ export default function LoginPage() {
   const router = useRouter();
   const auth = useAuth();
   const { toast } = useToast();
-
-  const logo = PlaceHolderImages.find(img => img.id === 'logo');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,11 +57,11 @@ export default function LoginPage() {
         <CardHeader className="text-center">
           <div className="mx-auto w-24 h-24 relative mb-4">
             <Image 
-              src={logo?.imageUrl || "https://picsum.photos/seed/1/400/400"} 
+              src="/logo.png" 
               alt="Tropical Holidays Logo" 
               fill
               className="object-contain"
-              data-ai-hint={logo?.imageHint || "tropical palm"}
+              priority
             />
           </div>
           <CardTitle className="text-2xl font-black text-[#E66E38]">Tropical Holidays</CardTitle>

@@ -51,7 +51,7 @@ import { useFirebase, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, orderBy, where } from "firebase/firestore";
 
 export function VoucherTable() {
-  const { firestore, user, isUserLoading } = useFirebase();
+  const { firestore, user, auth, isUserLoading } = useFirebase();
   const [activeLedgerId, setActiveLedgerId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [isImporting, setIsImporting] = useState(false);
@@ -72,21 +72,24 @@ export function VoucherTable() {
   const ledgers = ledgersData || [];
 
   useEffect(() => {
-    // Wait for auth to be fully ready before any ledger operations
-    if (isUserLoading || !user || ledgersLoading) return;
+    // CRITICAL: Wait for both the user state and the underlying auth token to be ready
+    if (isUserLoading || !user || !auth.currentUser || ledgersLoading) return;
     
-    if (ledgers.length === 0) {
-      // Only create if we are definitely authenticated
-      const timer = setTimeout(() => {
-        createLedger("Sheet1", firestore).then(ledger => {
+    if (ledgers.length === 0 && !activeLedgerId) {
+      // Create initial sheet only if we are truly authenticated and no sheets exist
+      const initializeSheet = async () => {
+        try {
+          const ledger = await createLedger("Sheet1", firestore);
           setActiveLedgerId(ledger.id);
-        });
-      }, 500); // Small delay to ensure auth token is propagated in rules
-      return () => clearTimeout(timer);
-    } else if (!activeLedgerId) {
+        } catch (e) {
+          console.error("Failed to initialize sheet:", e);
+        }
+      };
+      initializeSheet();
+    } else if (ledgers.length > 0 && !activeLedgerId) {
       setActiveLedgerId(ledgers[0].id);
     }
-  }, [ledgers, activeLedgerId, ledgersLoading, user, isUserLoading, firestore]);
+  }, [ledgers, activeLedgerId, ledgersLoading, user, isUserLoading, firestore, auth.currentUser]);
 
   const vouchersQuery = useMemoFirebase(() => {
     if (!firestore || !user || !activeLedgerId) return null;
@@ -101,7 +104,7 @@ export function VoucherTable() {
   const vouchers = vouchersData || [];
 
   async function handleAddLedger() {
-    if (!newLedgerName.trim() || !firestore) return;
+    if (!newLedgerName.trim() || !firestore || !user) return;
     const ledger = await createLedger(newLedgerName, firestore);
     setActiveLedgerId(ledger.id);
     setNewLedgerName("");
@@ -200,7 +203,7 @@ export function VoucherTable() {
   );
 
   return (
-    <div className="flex flex-col h-[calc(100vh-200px)] min-h-[500px] border rounded-lg bg-white shadow-xl overflow-hidden">
+    <div className="flex flex-col h-[calc(100vh-200px)] min-h-[600px] border rounded-lg bg-white shadow-xl overflow-hidden">
       <div className="p-3 bg-slate-50 border-b flex flex-col sm:flex-row justify-between items-center gap-3 no-print">
         <div className="relative w-full sm:w-80">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -265,7 +268,7 @@ export function VoucherTable() {
               filteredVouchers.map((v, idx) => (
                 <TableRow 
                   key={v.id} 
-                  className={idx % 2 === 0 ? "bg-white border-b border-slate-100" : "bg-[#f8fafc] border-b border-slate-100"}
+                  className={idx % 2 === 0 ? "bg-white border-b border-slate-100" : "bg-[#f0f7ff] border-b border-slate-100"}
                 >
                   <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-mono text-[#DB0D3A] font-bold">{v.voucherNo}</TableCell>
                   <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px]">{v.date}</TableCell>
@@ -286,7 +289,7 @@ export function VoucherTable() {
                 </TableRow>
               ))
             )}
-            {!vouchersLoading && Array.from({ length: Math.max(0, 15 - filteredVouchers.length) }).map((_, i) => (
+            {!vouchersLoading && Array.from({ length: Math.max(0, 50 - filteredVouchers.length) }).map((_, i) => (
               <TableRow key={`empty-${i}`} className="border-b border-slate-100 hover:bg-transparent">
                 <TableCell className="border-r border-slate-100 h-8" />
                 <TableCell className="border-r border-slate-100 h-8" />
