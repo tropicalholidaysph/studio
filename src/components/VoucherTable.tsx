@@ -260,7 +260,7 @@ export function VoucherTable() {
     const data = [header, ...rows];
     const worksheet = XLSX.utils.aoa_to_sheet(data);
 
-    // Disable gridlines globally to create the "blank canvas" look without cell bloat
+    // Disable gridlines globally for the sheet
     worksheet["!views"] = [{ showGridLines: false }];
 
     // Column Widths
@@ -277,25 +277,56 @@ export function VoucherTable() {
       right: { style: "thin", color: { rgb: "CCCCCC" } }
     };
 
-    // Apply formatting to data table only
-    for (let R = 0; R < data.length; ++R) {
-      for (let C = 0; C < header.length; ++C) {
-        const addr = XLSX.utils.encode_cell({ r: R, c: C });
-        if (!worksheet[addr]) continue;
-        
-        const cellStyle: any = {
-          border: tableBorderStyle,
-          fill: { patternType: "solid", fgColor: { rgb: "FFFFFF" } }
-        };
+    // The "White Paint" Technique - focused to prevent crashing and high MB
+    // We paint a buffer zone of 150 rows and 40 columns to cover the visible area
+    const paintRows = Math.max(data.length + 100, 150);
+    const paintCols = 40;
 
-        if (R === 0) {
-          cellStyle.fill = { patternType: "solid", fgColor: { rgb: "E66E38" } };
-          cellStyle.font = { color: { rgb: "FFFFFF" }, bold: true };
-        }
+    for (let R = 0; R < paintRows; R++) {
+      for (let C = 0; C < paintCols; C++) {
+        const addr = XLSX.utils.encode_cell({ r: R, c: C });
         
-        worksheet[addr].s = cellStyle;
+        // Initialize cell if it doesn't exist
+        if (!worksheet[addr]) {
+          worksheet[addr] = { v: "" };
+        }
+
+        const isDataCell = R < data.length && C < header.length;
+
+        if (isDataCell) {
+          // Data Table styling
+          const cellStyle: any = {
+            border: tableBorderStyle,
+            fill: { patternType: "solid", fgColor: { rgb: "FFFFFF" } },
+            font: { sz: 10 }
+          };
+
+          if (R === 0) {
+            cellStyle.fill = { patternType: "solid", fgColor: { rgb: "E66E38" } };
+            cellStyle.font = { color: { rgb: "FFFFFF" }, bold: true, sz: 10 };
+          }
+          
+          worksheet[addr].s = cellStyle;
+        } else {
+          // "White Paint" for the surrounding area - Solid white, NO borders
+          worksheet[addr].s = {
+            fill: { patternType: "solid", fgColor: { rgb: "FFFFFF" } },
+            border: {
+              top: { style: "none" },
+              bottom: { style: "none" },
+              left: { style: "none" },
+              right: { style: "none" }
+            }
+          };
+        }
       }
     }
+
+    // Force Excel to recognize the painted range so gridlines stay hidden
+    worksheet["!ref"] = XLSX.utils.encode_range({
+      s: { r: 0, c: 0 },
+      e: { r: paintRows - 1, c: paintCols - 1 }
+    });
 
     const workbook = XLSX.utils.book_new();
     const ledgerName = ledgers.find(l => l.id === activeLedgerId)?.name || "Ledger";
