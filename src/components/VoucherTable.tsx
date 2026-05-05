@@ -275,8 +275,10 @@ export function VoucherTable() {
 
     const dataRows = rows.length + 1;
     const dataCols = header.length;
-    const maxR = 2000; // Paint range
-    const maxC = 100;  // Paint range
+    
+    // "WHITE PAINT" TECHNIQUE RANGE
+    const maxR = 2000; 
+    const maxC = 100;
 
     const borderStyle = {
       top: { style: "thin", color: { rgb: "CCCCCC" } },
@@ -285,34 +287,52 @@ export function VoucherTable() {
       right: { style: "thin", color: { rgb: "CCCCCC" } }
     };
 
-    // WHITE PAINT TECHNIQUE: 
-    // We iterate over a large range and force a white background to hide gridlines.
+    const noBorderStyle = {
+      top: { style: "none" },
+      bottom: { style: "none" },
+      left: { style: "none" },
+      right: { style: "none" }
+    };
+
+    // Explicitly iterate and style every cell in the target range to remove gridlines
     for (let R = 0; R <= maxR; ++R) {
       for (let C = 0; C <= maxC; ++C) {
         const addr = XLSX.utils.encode_cell({ r: R, c: C });
         
+        // Initialize cell if it doesn't exist so we can style it
         if (!worksheet[addr]) {
-          worksheet[addr] = { v: "", s: {} };
+          worksheet[addr] = { v: "", t: "s", s: {} };
+        } else if (!worksheet[addr].s) {
+          worksheet[addr].s = {};
         }
 
-        // Apply white background to EVERYTHING to remove gridlines
-        worksheet[addr].s = {
-          ...worksheet[addr].s,
-          fill: { fgColor: { rgb: "FFFFFF" } }
+        // Apply white background to EVERYTHING in the range to hide gridlines
+        worksheet[addr].s.fill = { 
+          patternType: "solid",
+          fgColor: { rgb: "FFFFFF" } 
         };
 
-        // If it's part of the data table, apply borders and headers
+        // If it's part of the data table, apply borders and specific headers
         if (R < dataRows && C < dataCols) {
           worksheet[addr].s.border = borderStyle;
           
-          // Header Styling
+          // Header Styling (Tropical Holidays Orange)
           if (R === 0) {
-            worksheet[addr].s.fill = { fgColor: { rgb: "E66E38" } };
+            worksheet[addr].s.fill = { 
+              patternType: "solid",
+              fgColor: { rgb: "E66E38" } 
+            };
             worksheet[addr].s.font = { color: { rgb: "FFFFFF" }, bold: true };
           }
+        } else {
+          // Explicitly ensure NO borders for the surrounding area to keep it pure white
+          worksheet[addr].s.border = noBorderStyle;
         }
       }
     }
+
+    // Update the worksheet range to include all "painted" cells
+    worksheet['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } });
 
     const workbook = XLSX.utils.book_new();
     const ledgerName = ledgers.find(l => l.id === activeLedgerId)?.name || "Ledger";
