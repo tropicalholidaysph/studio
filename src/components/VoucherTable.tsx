@@ -62,10 +62,11 @@ export function VoucherTable() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
+  // Ensure we wait for user stability before running queries
   const ledgersQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
+    if (!firestore || !user || isUserLoading) return null;
     return query(collection(firestore, "ledgers"), orderBy("createdAt", "asc"));
-  }, [firestore, user]);
+  }, [firestore, user, isUserLoading]);
 
   const { data: ledgersData, isLoading: ledgersLoading } = useCollection<Ledger>(ledgersQuery);
   const ledgers = ledgersData || [];
@@ -73,7 +74,8 @@ export function VoucherTable() {
   useEffect(() => {
     if (isUserLoading || !user || ledgersLoading) return;
     
-    if (ledgers.length === 0 && !activeLedgerId) {
+    // Auto-initialize Sheet1 only if we are truly authenticated and ledgers are empty
+    if (ledgers.length === 0 && !activeLedgerId && !ledgersLoading) {
       const initializeSheet = async () => {
         try {
           const ledger = await createLedger("Sheet1", firestore);
@@ -89,13 +91,13 @@ export function VoucherTable() {
   }, [ledgers, activeLedgerId, ledgersLoading, user, isUserLoading, firestore]);
 
   const vouchersQuery = useMemoFirebase(() => {
-    if (!firestore || !user || !activeLedgerId) return null;
+    if (!firestore || !user || !activeLedgerId || isUserLoading) return null;
     return query(
       collection(firestore, "vouchers"),
       where("ledgerId", "==", activeLedgerId),
       orderBy("createdAt", "desc")
     );
-  }, [firestore, user, activeLedgerId]);
+  }, [firestore, user, activeLedgerId, isUserLoading]);
 
   const { data: vouchersData, isLoading: vouchersLoading } = useCollection<Voucher>(vouchersQuery);
   const vouchers = vouchersData || [];
@@ -255,7 +257,7 @@ export function VoucherTable() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredVouchers.length === 0 && !vouchersLoading ? (
+            {filteredVouchers.length === 0 && !vouchersLoading && !ledgersLoading ? (
               <TableRow>
                 <TableCell colSpan={10} className="h-64 text-center text-slate-400 italic text-xs">
                   {searchTerm ? "No matching records found." : "This sheet is ready for data import."}
@@ -286,7 +288,7 @@ export function VoucherTable() {
                 </TableRow>
               ))
             )}
-            {!vouchersLoading && Array.from({ length: Math.max(0, 50 - filteredVouchers.length) }).map((_, i) => (
+            {!vouchersLoading && !ledgersLoading && Array.from({ length: Math.max(0, 50 - filteredVouchers.length) }).map((_, i) => (
               <TableRow key={`empty-${i}`} className="border-b border-slate-100 hover:bg-transparent">
                 <TableCell className="border-r border-slate-100 h-8" />
                 <TableCell className="border-r border-slate-100 h-8" />
