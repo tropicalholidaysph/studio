@@ -102,7 +102,7 @@ export function VoucherTable() {
     setActiveLedgerId(ledger.id);
     setNewLedgerName("");
     setIsAddingLedger(false);
-    toast({ title: "New Ledger Created", description: `${newLedgerName} is now ready.` });
+    toast({ title: "New Sheet Created", description: `"${newLedgerName}" is now ready.` });
   }
 
   async function handleRenameLedger() {
@@ -110,12 +110,12 @@ export function VoucherTable() {
     await renameLedger(editingLedger.id, editName);
     setLedgers(ledgers.map(l => l.id === editingLedger.id ? { ...l, name: editName } : l));
     setEditingLedger(null);
-    toast({ title: "Ledger Renamed" });
+    toast({ title: "Sheet Renamed", description: `Updated to "${editName}"` });
   }
 
   async function handleDeleteLedger(id: string) {
     if (ledgers.length <= 1) {
-      toast({ variant: "destructive", title: "Cannot Delete", description: "At least one ledger must remain." });
+      toast({ variant: "destructive", title: "Action Denied", description: "You must have at least one sheet." });
       return;
     }
     await deleteLedger(id);
@@ -124,16 +124,17 @@ export function VoucherTable() {
     if (activeLedgerId === id) {
       setActiveLedgerId(updated[0].id);
     }
-    toast({ title: "Ledger Deleted" });
+    toast({ title: "Sheet Deleted" });
   }
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !activeLedgerId) return;
 
+    const activeSheetName = ledgers.find(l => l.id === activeLedgerId)?.name || "Sheet";
     setIsImporting(true);
+    
     const reader = new FileReader();
-
     reader.onload = async (e) => {
       try {
         const data = e.target?.result;
@@ -142,37 +143,52 @@ export function VoucherTable() {
         const worksheet = workbook.Sheets[sheetName];
         const json = XLSX.utils.sheet_to_json(worksheet) as any[];
 
+        if (json.length === 0) {
+          toast({ variant: "destructive", title: "Empty File", description: "No data found in the selected spreadsheet." });
+          setIsImporting(false);
+          return;
+        }
+
         const vouchersToImport = json.map((row: any) => {
-          const ro = Number(row["Amount (R.O.)"]) || 0;
-          const bz = Number(row["Amount (Bz)"]) || 0;
+          const ro = Number(row["Amount (R.O.)"]) || Number(row["RO"]) || 0;
+          const bz = Number(row["Amount (Bz)"]) || Number(row["Bz"]) || 0;
           const totalAmount = ro + (bz / 1000);
           
           let method: PaymentMethod = "Cash";
-          const methodStr = String(row["Payment Method"] || "").toLowerCase();
+          const methodStr = String(row["Payment Method"] || row["Method"] || "").toLowerCase();
           if (methodStr.includes("cheque")) method = "Cheque";
           if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
 
           return {
-            voucherNo: String(row["Voucher No"] || "V-0000"),
+            voucherNo: String(row["Voucher No"] || row["No"] || "V-0000"),
             date: row["Date"] ? new Date(row["Date"]).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-            recipient: String(row["Paid To"] || "N/A"),
+            recipient: String(row["Paid To"] || row["Recipient"] || "N/A"),
             amountRO: ro,
             amountBz: bz,
             sumInWords: convertAmountToWords(totalAmount),
             paymentMethod: method,
             bankName: row["Bank"] || "",
-            refNo: row["Cheque/Ref No"] || "",
-            purpose: row["Being (Purpose)"] || "N/A",
+            refNo: row["Cheque/Ref No"] || row["Ref"] || "",
+            purpose: row["Being (Purpose)"] || row["Purpose"] || "N/A",
             ledgerId: activeLedgerId
           };
         });
 
         await bulkImportVouchers(vouchersToImport);
-        toast({ title: "Import Successful", description: `${vouchersToImport.length} vouchers added.` });
+        
+        toast({ 
+          title: "Import Complete", 
+          description: `Successfully added ${vouchersToImport.length} vouchers to "${activeSheetName}".` 
+        });
+        
         loadVouchers(activeLedgerId);
       } catch (error) {
         console.error("Import error:", error);
-        toast({ variant: "destructive", title: "Import Failed", description: "Check Excel format." });
+        toast({ 
+          variant: "destructive", 
+          title: "Import Error", 
+          description: "There was a problem processing your file. Please check the column headers." 
+        });
       } finally {
         setIsImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -194,6 +210,7 @@ export function VoucherTable() {
     link.href = URL.createObjectURL(blob);
     link.download = `tropical_${activeName}_${format(new Date(), 'yyyyMMdd')}.csv`;
     link.click();
+    toast({ title: "Export Started", description: `File "tropical_${activeName}.csv" is downloading.` });
   };
 
   const filteredVouchers = vouchers.filter((v) => 
@@ -209,7 +226,7 @@ export function VoucherTable() {
         <div className="relative w-full sm:w-96">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input 
-            placeholder="Search records..." 
+            placeholder="Search within this sheet..." 
             className="pl-10"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -224,7 +241,7 @@ export function VoucherTable() {
             className="flex-1 sm:flex-none flex items-center gap-2 border-primary/30"
           >
             {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileUp className="w-4 h-4" />}
-            Import XLSX
+            {isImporting ? "Importing..." : "Import XLSX"}
           </Button>
           <Button variant="outline" onClick={exportToCSV} className="flex-1 sm:flex-none flex items-center gap-2 border-accent/30">
             <FileSpreadsheet className="w-4 h-4" />
@@ -234,11 +251,14 @@ export function VoucherTable() {
       </div>
 
       {/* Main Data Table */}
-      <div className="rounded-md border bg-white overflow-hidden shadow-sm relative">
+      <div className="rounded-md border bg-white overflow-hidden shadow-sm relative min-h-[400px]">
         {isImporting && (
           <div className="absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center space-y-4">
             <Loader2 className="w-12 h-12 animate-spin text-primary" />
-            <p className="font-bold text-primary animate-pulse">Processing Spreadsheet Data...</p>
+            <div className="text-center">
+              <p className="font-bold text-primary text-lg">Importing Spreadsheet...</p>
+              <p className="text-sm text-muted-foreground">Please wait while we sync your records.</p>
+            </div>
           </div>
         )}
         
@@ -248,7 +268,7 @@ export function VoucherTable() {
           </div>
         ) : (
           <Table className="border-collapse">
-            <TableHeader className="bg-[#f1f5f9]">
+            <TableHeader className="bg-slate-100">
               <TableRow className="hover:bg-transparent">
                 <TableHead className="border-r border-slate-200 font-bold text-slate-700">Voucher No</TableHead>
                 <TableHead className="border-r border-slate-200 font-bold text-slate-700">Date</TableHead>
@@ -263,8 +283,8 @@ export function VoucherTable() {
             <TableBody>
               {filteredVouchers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-64 text-center text-muted-foreground">
-                    No records in this sheet.
+                  <TableCell colSpan={8} className="h-64 text-center text-muted-foreground italic">
+                    {searchTerm ? "No records match your search." : "This sheet is currently empty."}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -273,22 +293,22 @@ export function VoucherTable() {
                     key={v.id} 
                     className={idx % 2 === 0 ? "bg-white hover:bg-slate-50" : "bg-[#f8fafc] hover:bg-slate-100"}
                   >
-                    <TableCell className="border-r border-slate-200 font-medium py-2 text-xs">{v.voucherNo}</TableCell>
-                    <TableCell className="border-r border-slate-200 text-xs">{v.date}</TableCell>
-                    <TableCell className="border-r border-slate-200 font-medium text-xs truncate max-w-[150px]">{v.recipient}</TableCell>
-                    <TableCell className="border-r border-slate-200 text-right font-bold text-primary text-xs">
+                    <TableCell className="border-r border-slate-200 font-medium py-2 text-[11px]">{v.voucherNo}</TableCell>
+                    <TableCell className="border-r border-slate-200 text-[11px]">{v.date}</TableCell>
+                    <TableCell className="border-r border-slate-200 font-bold text-[11px] truncate max-w-[150px]">{v.recipient}</TableCell>
+                    <TableCell className="border-r border-slate-200 text-right font-black text-primary text-[11px]">
                       {v.amountRO.toLocaleString()}
                     </TableCell>
-                    <TableCell className="border-r border-slate-200 text-right text-xs">
+                    <TableCell className="border-r border-slate-200 text-right text-[11px]">
                       {v.amountBz.toString().padStart(3, '0')}
                     </TableCell>
-                    <TableCell className="border-r border-slate-200 text-[10px] font-bold uppercase">
+                    <TableCell className="border-r border-slate-200 text-[10px] font-bold uppercase tracking-wider">
                       {v.paymentMethod}
                     </TableCell>
-                    <TableCell className="border-r border-slate-200 max-w-[180px] truncate text-xs">{v.purpose}</TableCell>
+                    <TableCell className="border-r border-slate-200 max-w-[180px] truncate text-[11px]">{v.purpose}</TableCell>
                     <TableCell className="text-center no-print p-1">
                       <Link href={`/vouchers/${v.id}`}>
-                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-primary hover:text-primary hover:bg-primary/10">
                           <Eye className="w-4 h-4" />
                         </Button>
                       </Link>
@@ -301,8 +321,8 @@ export function VoucherTable() {
         )}
       </div>
 
-      {/* Sheet Tabs - Moved to Bottom (Excel Style) */}
-      <div className="bg-slate-100 p-1 rounded-b-lg flex items-center border border-t-0 overflow-x-auto shadow-inner">
+      {/* Sheet Tabs - Bottom Excel Style */}
+      <div className="bg-slate-200 p-0.5 rounded-b-lg flex items-center border border-t-0 overflow-x-auto shadow-inner no-print">
         <Tabs value={activeLedgerId} onValueChange={setActiveLedgerId} className="w-full">
           <TabsList className="bg-transparent justify-start h-9 p-0 gap-0">
             {ledgers.map((ledger) => (
@@ -315,7 +335,7 @@ export function VoucherTable() {
                 </TabsTrigger>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button className="h-9 w-6 bg-slate-100 hover:bg-slate-200 flex items-center justify-center border-r border-slate-300">
+                    <button className="h-9 w-6 bg-slate-200 hover:bg-slate-300 flex items-center justify-center border-r border-slate-300">
                       <MoreHorizontal className="w-3 h-3 text-slate-500" />
                     </button>
                   </DropdownMenuTrigger>
@@ -334,10 +354,10 @@ export function VoucherTable() {
               variant="ghost" 
               size="sm" 
               onClick={() => setIsAddingLedger(true)}
-              className="h-9 px-4 hover:bg-slate-200 rounded-none text-primary"
+              className="h-9 px-4 hover:bg-slate-300 rounded-none text-primary"
             >
               <Plus className="w-4 h-4" />
-              <span className="ml-1 text-[10px] font-bold">NEW SHEET</span>
+              <span className="ml-1 text-[10px] font-bold">ADD SHEET</span>
             </Button>
           </TabsList>
         </Tabs>
@@ -346,16 +366,19 @@ export function VoucherTable() {
       {/* Management Dialogs */}
       <Dialog open={isAddingLedger} onOpenChange={setIsAddingLedger}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Create New Sheet</DialogTitle></DialogHeader>
-          <Input 
-            placeholder="e.g. June 2024" 
-            value={newLedgerName} 
-            onChange={(e) => setNewLedgerName(e.target.value)}
-            autoFocus 
-          />
+          <DialogHeader><DialogTitle>New Ledger Sheet</DialogTitle></DialogHeader>
+          <div className="py-4">
+            <Input 
+              placeholder="Enter sheet name (e.g. June 2024)" 
+              value={newLedgerName} 
+              onChange={(e) => setNewLedgerName(e.target.value)}
+              autoFocus 
+              onKeyDown={(e) => e.key === 'Enter' && handleAddLedger()}
+            />
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddingLedger(false)}>Cancel</Button>
-            <Button onClick={handleAddLedger}>Create</Button>
+            <Button onClick={handleAddLedger}>Create Sheet</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -363,10 +386,17 @@ export function VoucherTable() {
       <Dialog open={!!editingLedger} onOpenChange={(open) => !open && setEditingLedger(null)}>
         <DialogContent>
           <DialogHeader><DialogTitle>Rename Sheet</DialogTitle></DialogHeader>
-          <Input value={editName} onChange={(e) => setEditName(e.target.value)} autoFocus />
+          <div className="py-4">
+            <Input 
+              value={editName} 
+              onChange={(e) => setEditName(e.target.value)} 
+              autoFocus 
+              onKeyDown={(e) => e.key === 'Enter' && handleRenameLedger()}
+            />
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingLedger(null)}>Cancel</Button>
-            <Button onClick={handleRenameLedger}>Save</Button>
+            <Button onClick={handleRenameLedger}>Save Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
