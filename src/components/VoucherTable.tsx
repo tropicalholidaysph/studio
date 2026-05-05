@@ -180,6 +180,7 @@ export function VoucherTable() {
 
           const vouchersForSheet = rawJson.map((row: any, index: number) => {
             const vNoRaw = row["Voucher No"] || row["Sl No"] || row["No"] || row["#"] || String(index + 1);
+            // Treat as pure numeric string
             const vNo = String(vNoRaw).replace(/\D/g, '').trim(); 
             
             const recipient = row["Paid To"] || row["Recipient"];
@@ -232,7 +233,7 @@ export function VoucherTable() {
   const handleExport = () => {
     if (filteredVouchers.length === 0) return;
     
-    // Mapping back to your exact input headers
+    // Mapping exactly to your original headers for a "Clean Export"
     const exportData = filteredVouchers.map(v => ({
       "Voucher No": v.voucherNo,
       "Date": v.date,
@@ -246,12 +247,28 @@ export function VoucherTable() {
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
+    
+    // Set explicit column widths to prevent "compact" overlapping in Excel
+    const wscols = [
+      { wch: 15 }, // Voucher No
+      { wch: 12 }, // Date
+      { wch: 35 }, // Paid To
+      { wch: 14 }, // Amount (R.O.)
+      { wch: 10 }, // Amount (Bz)
+      { wch: 18 }, // Payment Method
+      { wch: 45 }, // Being (Purpose)
+      { wch: 20 }, // Bank
+      { wch: 20 }  // Cheque/Ref No
+    ];
+    worksheet['!cols'] = wscols;
+
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Ledger");
     const ledgerName = ledgers.find(l => l.id === activeLedgerId)?.name || "Ledger";
     XLSX.writeFile(workbook, `${ledgerName}_Export.xlsx`);
   };
 
+  // Strictly Ascending Sort (1-50) based on numeric voucher number
   const filteredVouchers = vouchers
     .filter((v) => 
       v.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -261,7 +278,6 @@ export function VoucherTable() {
     .sort((a, b) => {
       const numA = parseInt(a.voucherNo) || 0;
       const numB = parseInt(b.voucherNo) || 0;
-      // Strictly Ascending Order (1-50)
       if (numA !== numB) return numA - numB;
       return new Date(a.date).getTime() - new Date(b.date).getTime();
     });
