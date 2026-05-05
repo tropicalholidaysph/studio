@@ -585,4 +585,3 @@ export function VoucherTable() {
     </div>
   );
 }
-
