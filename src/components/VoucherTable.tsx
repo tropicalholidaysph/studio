@@ -134,6 +134,12 @@ export function VoucherTable() {
     const activeSheetName = ledgers.find(l => l.id === activeLedgerId)?.name || "Sheet";
     setIsImporting(true);
     
+    // Immediate notification that import started
+    toast({ 
+      title: "Importing...", 
+      description: `Reading data for "${activeSheetName}". Please stay on this page.` 
+    });
+    
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
@@ -177,8 +183,8 @@ export function VoucherTable() {
         await bulkImportVouchers(vouchersToImport);
         
         toast({ 
-          title: "Import Complete", 
-          description: `Successfully added ${vouchersToImport.length} vouchers to "${activeSheetName}".` 
+          title: "Import Successful", 
+          description: `Added ${vouchersToImport.length} vouchers to "${activeSheetName}".` 
         });
         
         loadVouchers(activeLedgerId);
@@ -186,8 +192,8 @@ export function VoucherTable() {
         console.error("Import error:", error);
         toast({ 
           variant: "destructive", 
-          title: "Import Error", 
-          description: "There was a problem processing your file. Please check the column headers." 
+          title: "Import Failed", 
+          description: "There was a problem processing your file. Ensure headers match the template." 
         });
       } finally {
         setIsImporting(false);
@@ -256,8 +262,8 @@ export function VoucherTable() {
           <div className="absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center space-y-4">
             <Loader2 className="w-12 h-12 animate-spin text-primary" />
             <div className="text-center">
-              <p className="font-bold text-primary text-lg">Importing Spreadsheet...</p>
-              <p className="text-sm text-muted-foreground">Please wait while we sync your records.</p>
+              <p className="font-bold text-primary text-lg">Syncing Database...</p>
+              <p className="text-sm text-muted-foreground">Uploading records to your secure ledger.</p>
             </div>
           </div>
         )}

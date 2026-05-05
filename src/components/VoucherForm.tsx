@@ -76,6 +76,7 @@ export function VoucherForm() {
         form.setValue("ledgerId", data[0].id);
       }
       
+      // Prevent hydration mismatch by setting dynamic defaults after mount
       const randomNo = `V-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
       const today = new Date().toISOString().split('T')[0];
       form.setValue("voucherNo", randomNo);
@@ -94,8 +95,12 @@ export function VoucherForm() {
 
   function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
+    // Optimistic navigation for speed
     const res = createVoucher(values);
-    toast({ title: "Voucher Recorded", description: "Navigating to view..." });
+    toast({ 
+      title: "Voucher Saved", 
+      description: "Recording details in the ledger..." 
+    });
     router.push(`/vouchers/${res.id}`);
   }
 
@@ -227,7 +232,11 @@ export function VoucherForm() {
                   <FormItem>
                     <FormLabel>Sum of Rial Omani (In Words)</FormLabel>
                     <FormControl>
-                      <Textarea readOnly className="bg-muted/30 cursor-not-allowed italic font-medium text-primary h-10" {...field} />
+                      <Textarea 
+                        readOnly 
+                        className="bg-muted/30 cursor-not-allowed italic font-medium text-primary h-10" 
+                        {...field} 
+                      />
                     </FormControl>
                   </FormItem>
                 )}
