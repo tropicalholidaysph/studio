@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -34,7 +35,7 @@ import {
   Trash,
   AlertCircle
 } from "lucide-react";
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx-js-style";
 import { 
   bulkImportVouchers, 
   createLedger, 
@@ -232,23 +233,47 @@ export function VoucherTable() {
   const handleExport = () => {
     if (filteredVouchers.length === 0) return;
     
-    const exportData = filteredVouchers.map(v => ({
-      "Voucher No": v.voucherNo,
-      "Date": v.date,
-      "Paid To": v.recipient,
-      "Amount (R.O.)": v.amountRO,
-      "Amount (Bz)": v.amountBz,
-      "Payment Method": v.paymentMethod,
-      "Being (Purpose)": v.purpose,
-      "Bank": v.bankName || "",
-      "Ref No": v.refNo || ""
-    }));
+    // Create Worksheet with Styles
+    const header = [
+      "Voucher No", 
+      "Date", 
+      "Paid To", 
+      "Amount (R.O.)", 
+      "Amount (Bz)", 
+      "Payment Method", 
+      "Being (Purpose)", 
+      "Bank", 
+      "Ref No"
+    ];
+    
+    const rows = filteredVouchers.map(v => [
+      v.voucherNo,
+      v.date,
+      v.recipient,
+      v.amountRO,
+      v.amountBz,
+      v.paymentMethod,
+      v.purpose,
+      v.bankName || "",
+      v.refNo || ""
+    ]);
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const data = [header, ...rows];
+    const worksheet = XLSX.utils.aoa_to_sheet(data);
 
+    // Apply Styles to Header
     const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
-    worksheet['!autofilter'] = { ref: XLSX.utils.encode_range(range) };
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+      const address = XLSX.utils.encode_col(C) + "1";
+      if (!worksheet[address]) continue;
+      worksheet[address].s = {
+        fill: { fgColor: { rgb: "E66E38" } },
+        font: { color: { rgb: "FFFFFF" }, bold: true },
+        alignment: { horizontal: "left" }
+      };
+    }
 
+    // Set Column Widths
     const wscols: any[] = [
       { wch: 12 }, // A: Voucher No
       { wch: 12 }, // B: Date
@@ -261,15 +286,15 @@ export function VoucherTable() {
       { wch: 15 }, // I: Ref No
     ];
     
-    // Hide a significant number of columns from J onwards to make it look empty
+    // Aggressively Hide everything from J onwards
     for (let i = 9; i <= 200; i++) {
       wscols[i] = { hidden: true };
     }
     worksheet['!cols'] = wscols;
 
+    // Aggressively Hide everything past the data rows
     const wsrows: any[] = [];
-    // Hide a huge range of rows past the data to clear out ghost numbers
-    for (let i = exportData.length + 1; i <= exportData.length + 5000; i++) {
+    for (let i = data.length; i <= data.length + 5000; i++) {
       wsrows[i] = { hidden: true };
     }
     worksheet['!rows'] = wsrows;
@@ -435,7 +460,7 @@ export function VoucherTable() {
                       className={cn(
                         "border-none h-9 transition-colors",
                         isActuallyVoid 
-                          ? "bg-red-500/40 hover:bg-red-500/50 dark:bg-red-900/60 dark:hover:bg-red-900/80" 
+                          ? "bg-red-100 hover:bg-red-200 dark:bg-red-900/60 dark:hover:bg-red-900/80" 
                           : "bg-background hover:bg-muted/10"
                       )}
                     >
