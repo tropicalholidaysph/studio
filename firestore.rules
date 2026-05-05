@@ -1,0 +1,106 @@
+/**
+ * Tropical Ledger Security Rules
+ *
+ * Core Philosophy:
+ * This ruleset implements a Database Access Control (DBAC) model tailored for internal corporate 
+ * financial management. It uses a "Trusted Person" pattern where general access to the system's 
+ * data is governed by the presence of a user's UID in a dedicated authorization collection.
+ *
+ * Data Structure:
+ * - /paymentVouchers/{voucherId}: A flat, top-level collection containing all financial vouchers.
+ * - /roles_ledger_access/{userId}: A lookup collection where the existence of a document 
+ *   grants the corresponding user full operational access to the ledger.
+ *
+ * Key Security Decisions:
+ * - Shared Ledger Model: Based on the "Tropical Ledger" reasoning, all authorized employees 
+ *   share access to all vouchers. There is no individual "ownership" of a voucher; access is 
+ *   binary (either you are a trusted user or you are not).
+ * - Lookup-Based Authorization: Rules for the primary data collection (/paymentVouchers) 
+ *   perform an `exists()` check against the `/roles_ledger_access` collection. This keeps 
+ *   the voucher documents clean and avoids complex nesting.
+ * - Strict User Privacy: Users can see and manage their own entry in the `roles_ledger_access` 
+ *   collection (for self-identification), but listing the entire directory of authorized users is restricted.
+ *
+ * Denormalization for Authorization:
+ * - The `id` field within the `PaymentVoucher` document is enforced to match the Firestore 
+ *   Document ID to ensure relational integrity and simplify querying.
+ */
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- Helper Functions ---
+
+    /** @description Checks if the request is from an authenticated user. */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /** @description Checks if the authenticated user's UID matches the provided userId. */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /** @description Checks if the user is the owner and the document exists (for updates/deletes). */
+    function isExistingOwner(userId) {
+      return resource != null && isOwner(userId);
+    }
+
+    /** @description Verifies if the authenticated user is registered as a "trusted person" in the ledger system. */
+    function isTrustedUser() {
+      return exists(/databases/$(database)/documents/roles_ledger_access/$(request.auth.uid));
+    }
+
+    // --- Collection Rules ---
+
+    /**
+     * @description Rules for the authorization lookup collection. Users can manage their own status 
+     * (for prototyping/registration purposes), but cannot browse other users.
+     * @path /roles_ledger_access/{userId}
+     * @allow (get) Authenticated user requesting their own access record.
+     * @deny (list) Any attempt to list all authorized users.
+     * @principle Ownership-based access for identity records.
+     */
+    match /roles_ledger_access/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isOwner(userId);
+      allow update: if isExistingOwner(userId);
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description Rules for the central ledger vouchers. Access is granted to any user who 
+     * exists in the /roles_ledger_access collection.
+     * @path /paymentVouchers/{voucherId}
+     * @allow (list) A "trusted user" fetching the list of all vouchers.
+     * @deny (create) A user NOT present in the /roles_ledger_access collection.
+     * @principle Database Access Control (DBAC) via lookup collection.
+     */
+    match /paymentVouchers/{voucherId} {
+      
+      // Read Operations
+      allow get, list: if isSignedIn() && isTrustedUser();
+
+      // Write Operations
+      
+      /**
+       * @description Create logic. Requires trusted status and ensures the 
+       * internal 'id' field matches the document path.
+       */
+      allow create: if isSignedIn() && isTrustedUser() && request.resource.data.id == voucherId;
+
+      /**
+       * @description Update logic. Requires trusted status, existence of document, 
+       * and enforces immutability of the 'id' field.
+       */
+      allow update: if isSignedIn() && isTrustedUser() && resource != null && request.resource.data.id == resource.data.id;
+
+      /**
+       * @description Delete logic. Requires trusted status and existence of document.
+       */
+      allow delete: if isSignedIn() && isTrustedUser() && resource != null;
+    }
+  }
+}

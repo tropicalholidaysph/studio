@@ -1,0 +1,128 @@
+{
+  "entities": {
+    "PaymentVoucher": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "PaymentVoucher",
+      "type": "object",
+      "description": "Represents a single payment voucher transaction in the Tropical Ledger system, capturing details for financial record-keeping and voucher generation.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the PaymentVoucher entity."
+        },
+        "voucherNumber": {
+          "type": "string",
+          "description": "The unique number assigned to the payment voucher, serving as its primary reference."
+        },
+        "dateIssued": {
+          "type": "string",
+          "description": "The date and time when the payment voucher was officially issued.",
+          "format": "date-time"
+        },
+        "paidToRecipient": {
+          "type": "string",
+          "description": "The full name or entity name of the recipient to whom the payment is being made."
+        },
+        "amountRialOmani": {
+          "type": "number",
+          "description": "The whole number part of the payment amount in Rial Omani (R.O.)."
+        },
+        "amountBaisa": {
+          "type": "number",
+          "description": "The fractional part of the payment amount in Baisa (Bz), the sub-unit of Rial Omani (1 R.O. = 1000 Bz). This value typically ranges from 0 to 999."
+        },
+        "totalAmount": {
+          "type": "number",
+          "description": "The combined total amount of the voucher in Rial Omani, represented as a decimal number (e.g., 10.500 R.O.), calculated from amountRialOmani and amountBaisa."
+        },
+        "amountInWords": {
+          "type": "string",
+          "description": "The textual representation of the total amount in Rial Omani (e.g., 'Ten Rial Omani and Five Hundred Baisa')."
+        },
+        "paymentMethod": {
+          "type": "string",
+          "description": "The method used for making the payment (e.g., 'Cash', 'Cheque', 'Bank Transfer')."
+        },
+        "bankName": {
+          "type": "string",
+          "description": "The name of the bank involved in the transaction, applicable if the payment method is 'Cheque' or 'Bank Transfer'."
+        },
+        "referenceNumber": {
+          "type": "string",
+          "description": "The specific reference number, cheque number, or transaction ID for the payment, applicable if the payment method is 'Cheque' or 'Bank Transfer'."
+        },
+        "purpose": {
+          "type": "string",
+          "description": "A brief description explaining the reason or purpose for the payment ('Being')."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when this voucher record was initially created in the system.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when this voucher record was last modified or updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "voucherNumber",
+        "dateIssued",
+        "paidToRecipient",
+        "amountRialOmani",
+        "amountBaisa",
+        "totalAmount",
+        "amountInWords",
+        "paymentMethod",
+        "purpose",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/paymentVouchers/{voucherId}",
+        "definition": {
+          "entityName": "PaymentVoucher",
+          "schema": {
+            "$ref": "#/backend/entities/PaymentVoucher"
+          },
+          "description": "Stores individual payment voucher records. All documents in this collection are accessible by any authenticated user who is authorized to use the 'Tropical Ledger' system. Authorization is checked against the '/roles_ledger_access' collection.",
+          "params": [
+            {
+              "name": "voucherId",
+              "description": "The unique identifier for a specific PaymentVoucher document."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/roles_ledger_access/{userId}",
+        "definition": {
+          "entityName": "roles_ledger_access",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "This collection defines which users are authorized to access the 'Tropical Ledger' system. The existence of a document at `/roles_ledger_access/{userId}` signifies that `userId` is a 'trusted person' with general access rights to the system's data (e.g., payment vouchers). This implements Database Access Control (DBAC) by storing roles in the database.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The Firebase Authentication UID of a user authorized to access the system."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure for 'Tropical Ledger' prioritizes security, scalability, and debuggability in line with the core design principles. Given that the system is designed to digitize a company's internal voucher process, the assumption is that all authorized users (employees) within the 'Tropical Ledger' system will have access to the *entire* collection of payment vouchers. This leads to a flattened, top-level collection for the `PaymentVoucher` entities.\n\n**Authorization Independence:** The `PaymentVoucher` documents are stored in a top-level collection `/paymentVouchers`. Each voucher document is self-contained, meaning its authorization does not depend on data from a parent document (e.g., a 'Project' or 'Department' document). This eliminates the need for expensive and complex `get()` calls in security rules to check parent document attributes, thus supporting atomic operations and greatly simplifying rule debugging. The authorization for accessing any `PaymentVoucher` document is determined solely by whether the `request.auth.uid` is present in the `/roles_ledger_access` collection, indicating they are a 'trusted person' for the system.\n\n**QAPs (Rules are not Filters):** This structure inherently supports secure `list` operations. Because all documents within the `/paymentVouchers` collection share the same security posture (any authorized user can view/manage any voucher), a `list` query will never return documents that an authorized user is not permitted to see. Firestore security rules will enforce that only authenticated users whose `uid` exists in the `/roles_ledger_access` collection can read (and write) from `/paymentVouchers`. This ensures that `list` operations are efficient and do not rely on filtering data on the client side or complex, slow `get()` calls within rules for each item in a list."
+  }
+}
