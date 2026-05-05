@@ -1,34 +1,32 @@
-/**
- * Tropical Ledger Security Rules
- *
- * Core Philosophy:
- * This ruleset implements a Database Access Control (DBAC) model tailored for internal corporate 
- * financial management. It uses a "Trusted Person" pattern where general access to the system's 
- * data is governed by the presence of a user's UID in a dedicated authorization collection.
- *
- * Data Structure:
- * - /paymentVouchers/{voucherId}: A flat, top-level collection containing all financial vouchers.
- * - /roles_ledger_access/{userId}: A lookup collection where the existence of a document 
- *   grants the corresponding user full operational access to the ledger.
- *
- * Key Security Decisions:
- * - Shared Ledger Model: Based on the "Tropical Ledger" reasoning, all authorized employees 
- *   share access to all vouchers. There is no individual "ownership" of a voucher; access is 
- *   binary (either you are a trusted user or you are not).
- * - Lookup-Based Authorization: Rules for the primary data collection (/paymentVouchers) 
- *   perform an `exists()` check against the `/roles_ledger_access` collection. This keeps 
- *   the voucher documents clean and avoids complex nesting.
- * - Strict User Privacy: Users can see and manage their own entry in the `roles_ledger_access` 
- *   collection (for self-identification), but listing the entire directory of authorized users is restricted.
- *
- * Denormalization for Authorization:
- * - The `id` field within the `PaymentVoucher` document is enforced to match the Firestore 
- *   Document ID to ensure relational integrity and simplify querying.
- */
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    /**
+     * TROPICAL LEDGER SECURITY MODEL
+     *
+     * Core Philosophy: 
+     * This ruleset implements a Database Access Control (DBAC) model. Access to the primary 
+     * financial data is decoupled from the data itself and managed via a centralized 
+     * authorization registry ('authorizedUsers').
+     *
+     * Data Structure:
+     * - /authorizedUsers/{userId}: Marker documents where the ID is the user's UID.
+     * - /paymentVouchers/{voucherId}: Flattened collection of all financial vouchers.
+     *
+     * Key Security Decisions:
+     * - Authorization Independence: Instead of checking ownership on every voucher, rules 
+     *   perform a lookup against the 'authorizedUsers' collection.
+     * - Audit Trail Integrity: While access is shared among authorized users, the 'userId' 
+     *   field on vouchers is strictly enforced to match the creator's UID and remains 
+     *   immutable to preserve the audit trail.
+     * - Restricted User Discovery: Users cannot list the entire 'authorizedUsers' collection 
+     *   to prevent enumerating the staff/employee list.
+     *
+     * Denormalization for Authorization:
+     * - The system uses a "Marker Document" pattern in '/authorizedUsers'. This acts as a 
+     *   high-performance whitelist for the entire application.
+     */
 
     // --- Helper Functions ---
 
@@ -37,70 +35,52 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    /** @description Checks if the authenticated user's UID matches the provided userId. */
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+    /** @description Checks if the authenticated user's UID exists in the authorization registry. */
+    function isAuthorized() {
+      return isSignedIn() && exists(/databases/$(database)/documents/authorizedUsers/$(request.auth.uid));
     }
 
-    /** @description Checks if the user is the owner and the document exists (for updates/deletes). */
-    function isExistingOwner(userId) {
-      return resource != null && isOwner(userId);
-    }
-
-    /** @description Verifies if the authenticated user is registered as a "trusted person" in the ledger system. */
-    function isTrustedUser() {
-      return exists(/databases/$(database)/documents/roles_ledger_access/$(request.auth.uid));
+    /** @description Validates that the resource exists and is being accessed by an authorized user. */
+    function isExistingAndAuthorized() {
+      return isAuthorized() && resource != null;
     }
 
     // --- Collection Rules ---
 
     /**
-     * @description Rules for the authorization lookup collection. Users can manage their own status 
-     * (for prototyping/registration purposes), but cannot browse other users.
-     * @path /roles_ledger_access/{userId}
-     * @allow (get) Authenticated user requesting their own access record.
-     * @deny (list) Any attempt to list all authorized users.
-     * @principle Ownership-based access for identity records.
+     * @description Authorization registry. The existence of a UID here grants access to the ledger.
+     * @path /authorizedUsers/{userId}
+     * @allow get: (get) If the user is signed in to verify their own authorization status.
+     * @deny list, write: (list) Prevents listing all employees; (write) Management is handled by system admins.
+     * @principle Authorization Registry / Marker Document Pattern.
      */
-    match /roles_ledger_access/{userId} {
-      allow get: if isOwner(userId);
+    match /authorizedUsers/{userId} {
+      allow get: if isSignedIn();
       allow list: if false;
-      allow create: if isOwner(userId);
-      allow update: if isExistingOwner(userId);
-      allow delete: if isExistingOwner(userId);
+      allow create, update, delete: if false;
     }
 
     /**
-     * @description Rules for the central ledger vouchers. Access is granted to any user who 
-     * exists in the /roles_ledger_access collection.
-     * @path /paymentVouchers/{voucherId}
-     * @allow (list) A "trusted user" fetching the list of all vouchers.
-     * @deny (create) A user NOT present in the /roles_ledger_access collection.
-     * @principle Database Access Control (DBAC) via lookup collection.
+     * @description Primary collection for payment vouchers. Access is granted based on the authorization registry.
+     * @path /paymentVouchers/{paymentVoucherId}
+     * @allow list: (list) Any user in 'authorizedUsers' can view the full history for the dashboard.
+     * @allow create: (create) Authorized users can create vouchers, provided they link their own UID for auditing.
+     * @deny update: (update) If an authorized user attempts to change the 'userId' audit field.
+     * @principle Relational Integrity and Shared Access Control.
      */
-    match /paymentVouchers/{voucherId} {
+    match /paymentVouchers/{paymentVoucherId} {
       
-      // Read Operations
-      allow get, list: if isSignedIn() && isTrustedUser();
+      // Read access is shared among all authorized users for dashboard visibility.
+      allow get, list: if isAuthorized();
 
-      // Write Operations
-      
-      /**
-       * @description Create logic. Requires trusted status and ensures the 
-       * internal 'id' field matches the document path.
-       */
-      allow create: if isSignedIn() && isTrustedUser() && request.resource.data.id == voucherId;
+      // Create: Must be authorized and must correctly attribute the voucher to themselves.
+      allow create: if isAuthorized() && request.resource.data.userId == request.auth.uid;
 
-      /**
-       * @description Update logic. Requires trusted status, existence of document, 
-       * and enforces immutability of the 'id' field.
-       */
-      allow update: if isSignedIn() && isTrustedUser() && resource != null && request.resource.data.id == resource.data.id;
+      // Update: Must be authorized and must not change the original creator/audit field.
+      allow update: if isExistingAndAuthorized() && request.resource.data.userId == resource.data.userId;
 
-      /**
-       * @description Delete logic. Requires trusted status and existence of document.
-       */
-      allow delete: if isSignedIn() && isTrustedUser() && resource != null;
+      // Delete: Must be authorized.
+      allow delete: if isExistingAndAuthorized();
     }
   }
 }
