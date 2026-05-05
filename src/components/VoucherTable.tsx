@@ -149,7 +149,7 @@ export function VoucherTable() {
     if (!file || !firestore || !user) return;
 
     setIsImporting(true);
-    toast({ title: "Importing Ledger", description: "Processing up to 50 rows per sheet..." });
+    toast({ title: "Importing Ledger", description: "Processing first 50 rows per sheet..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
