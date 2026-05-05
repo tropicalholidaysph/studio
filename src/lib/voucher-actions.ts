@@ -1,4 +1,3 @@
-
 'use client';
 
 import { initializeFirebase } from "@/firebase";
@@ -13,7 +12,8 @@ import {
   writeBatch,
   updateDoc,
   deleteDoc,
-  Firestore
+  Firestore,
+  where
 } from "firebase/firestore";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -41,7 +41,7 @@ export async function createLedger(name: string, db: Firestore): Promise<Ledger>
     createdAt: new Date().toISOString()
   };
   
-  // No await here per guidelines, but return the object for UI state
+  // Non-blocking write
   setDoc(docRef, ledger).catch(err => {
     errorEmitter.emit('permission-error', new FirestorePermissionError({
       path: docRef.path,
@@ -83,7 +83,6 @@ export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'created
   const chunkSize = 400; 
   const now = new Date().toISOString();
 
-  // Sequential chunks for batch processing
   for (let i = 0; i < vouchers.length; i += chunkSize) {
     const chunk = vouchers.slice(i, i + chunkSize);
     const batch = writeBatch(db);

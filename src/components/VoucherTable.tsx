@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -51,7 +50,7 @@ import { useFirebase, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, orderBy, where } from "firebase/firestore";
 
 export function VoucherTable() {
-  const { firestore, user, auth, isUserLoading } = useFirebase();
+  const { firestore, user, isUserLoading } = useFirebase();
   const [activeLedgerId, setActiveLedgerId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [isImporting, setIsImporting] = useState(false);
@@ -72,11 +71,9 @@ export function VoucherTable() {
   const ledgers = ledgersData || [];
 
   useEffect(() => {
-    // CRITICAL: Wait for both the user state and the underlying auth token to be ready
-    if (isUserLoading || !user || !auth.currentUser || ledgersLoading) return;
+    if (isUserLoading || !user || ledgersLoading) return;
     
     if (ledgers.length === 0 && !activeLedgerId) {
-      // Create initial sheet only if we are truly authenticated and no sheets exist
       const initializeSheet = async () => {
         try {
           const ledger = await createLedger("Sheet1", firestore);
@@ -89,7 +86,7 @@ export function VoucherTable() {
     } else if (ledgers.length > 0 && !activeLedgerId) {
       setActiveLedgerId(ledgers[0].id);
     }
-  }, [ledgers, activeLedgerId, ledgersLoading, user, isUserLoading, firestore, auth.currentUser]);
+  }, [ledgers, activeLedgerId, ledgersLoading, user, isUserLoading, firestore]);
 
   const vouchersQuery = useMemoFirebase(() => {
     if (!firestore || !user || !activeLedgerId) return null;
