@@ -271,20 +271,20 @@ export function VoucherTable() {
     wscols[6] = { wch: 45 }; // G: Purpose
     wscols[7] = { wch: 20 }; // H: Bank
     wscols[8] = { wch: 15 }; // I: Ref No
-    
-    // HIDE UNUSED COLUMNS (Limited to 100 to keep file size low while still appearing 'infinite')
-    for (let i = 9; i <= 100; i++) {
-      wscols[i] = { hidden: true };
-    }
     worksheet['!cols'] = wscols;
 
-    // HIDE UNUSED ROWS (Limited to 2000 to keep file size small and prevent browser crashes)
-    const wsrows: any[] = [];
-    const lastDataRow = data.length;
-    for (let i = lastDataRow; i <= 2000; i++) {
-      wsrows[i] = { hidden: true };
+    // WHITE PAINT TECHNIQUE: 
+    // Instead of hiding millions of rows (which crashes), we "paint" a large buffer white.
+    // This removes the gridlines for the entire visible area, creating the "blank state" effect.
+    // We apply this to a Safe-Infinite range (100 columns and 2,000 rows).
+    for (let R = 0; R <= 2000; ++R) {
+      for (let C = 0; C <= 100; ++C) {
+        const addr = XLSX.utils.encode_cell({ r: R, c: C });
+        if (!worksheet[addr]) {
+          worksheet[addr] = { v: "", s: { fill: { fgColor: { rgb: "FFFFFF" } } } };
+        }
+      }
     }
-    worksheet['!rows'] = wsrows;
 
     // Header Styling
     const range = XLSX.utils.decode_range(worksheet['!ref']!);
@@ -585,3 +585,4 @@ export function VoucherTable() {
     </div>
   );
 }
+
