@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -233,7 +232,6 @@ export function VoucherTable() {
   const handleExport = () => {
     if (filteredVouchers.length === 0) return;
     
-    // Create Worksheet with Styles
     const header = [
       "Voucher No", 
       "Date", 
