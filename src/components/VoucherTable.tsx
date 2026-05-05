@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -231,6 +232,7 @@ export function VoucherTable() {
   const handleExport = () => {
     if (filteredVouchers.length === 0) return;
     
+    // Mapping back to your exact input headers
     const exportData = filteredVouchers.map(v => ({
       "Voucher No": v.voucherNo,
       "Date": v.date,
@@ -259,7 +261,7 @@ export function VoucherTable() {
     .sort((a, b) => {
       const numA = parseInt(a.voucherNo) || 0;
       const numB = parseInt(b.voucherNo) || 0;
-      // Sort in Ascending Order (1-50)
+      // Strictly Ascending Order (1-50)
       if (numA !== numB) return numA - numB;
       return new Date(a.date).getTime() - new Date(b.date).getTime();
     });

@@ -11,6 +11,17 @@ interface VoucherVisualProps {
 }
 
 export function VoucherVisual({ voucher }: VoucherVisualProps) {
+  // Helper to format date safely
+  const formatDate = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return "-- / -- / ----";
+      return format(d, 'dd - MM - yyyy');
+    } catch {
+      return "-- / -- / ----";
+    }
+  };
+
   return (
     <div className={cn(
       "w-full max-w-[850px] mx-auto bg-[#FEF9E7] p-8 sm:p-12 border border-neutral-300 shadow-xl font-serif text-[#2c3e50] relative overflow-hidden print:shadow-none print:border-none",
@@ -63,7 +74,7 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
         <div className="flex items-center gap-2">
           <span className="text-lg font-bold text-[#DB0D3A]">No.</span>
           <span className="text-3xl font-black text-[#DB0D3A] tracking-tighter font-mono bg-white/50 px-2 rounded">
-            {voucher.voucherNo.padStart(4, '0')}
+            {voucher.voucherNo}
           </span>
         </div>
 
@@ -75,16 +86,16 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold whitespace-nowrap">Date :</span>
           <div className="border-b-2 border-dashed border-neutral-800 px-4 min-w-[140px] text-center font-mono text-lg font-bold">
-             {voucher.date ? format(new Date(voucher.date), 'dd - MM - yyyy') : '-- - -- - ----'}
+             {formatDate(voucher.date)}
           </div>
           <span className="text-xs font-bold whitespace-nowrap">التاريخ :</span>
         </div>
       </div>
 
       {/* Main Content Sections */}
-      <div className="space-y-8 relative z-10">
+      <div className="space-y-6 relative z-10">
         
-        {/* Amount Box */}
+        {/* Amount Box - R.O Left, Baisa Right */}
         <div className="flex items-start">
           <div className="border-2 border-neutral-800 w-[240px] bg-white">
             <div className="grid grid-cols-2 text-center border-b-2 border-neutral-800 bg-neutral-100">
@@ -98,71 +109,85 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
           </div>
         </div>
 
-        {/* Paid To Section */}
-        <div className="grid grid-cols-[140px_1fr_140px] items-end gap-3 w-full">
-          <span className="text-sm font-bold whitespace-nowrap">Paid to Mr./M/s.</span>
-          <div className="border-b-2 border-dotted border-neutral-500 pb-1 px-4 text-2xl font-black italic text-[#E66E38] truncate">
+        {/* Paid To Section - Using absolute positioning for labels or flexible layout to prevent overlap */}
+        <div className="flex flex-col border-b-2 border-dotted border-neutral-400 pb-1">
+          <div className="flex justify-between items-center text-[11px] font-bold text-neutral-500 uppercase tracking-wide">
+            <span>Paid to Mr./M/s.</span>
+            <span>صرفنا إلى الفاضل / الأفاضل</span>
+          </div>
+          <div className="text-2xl font-black italic text-[#E66E38] px-2 py-1 min-h-[40px] break-words">
             {voucher.recipient}
           </div>
-          <span className="text-sm font-bold text-right whitespace-nowrap">صرفنا إلى الفاضل / الأفاضل</span>
         </div>
 
         {/* Sum In Words Section */}
-        <div className="grid grid-cols-[160px_1fr_140px] items-end gap-3 w-full">
-          <span className="text-sm font-bold whitespace-nowrap">The sum of Rial Omani</span>
-          <div className="border-b-2 border-dotted border-neutral-500 pb-1 px-4 text-lg italic font-semibold text-neutral-800">
+        <div className="flex flex-col border-b-2 border-dotted border-neutral-400 pb-1">
+          <div className="flex justify-between items-center text-[11px] font-bold text-neutral-500 uppercase tracking-wide">
+            <span>The sum of Rial Omani</span>
+            <span>مبلغ وقدره ريال عماني</span>
+          </div>
+          <div className="text-lg italic font-semibold text-neutral-800 px-2 py-1 min-h-[30px] break-words">
             {voucher.sumInWords}
           </div>
-          <span className="text-sm font-bold text-right whitespace-nowrap">مبلغ وقدره ريال عماني</span>
         </div>
 
         {/* Payment Method Section */}
-        <div className="grid grid-cols-[160px_1fr_140px] items-end gap-3 w-full">
-          <span className="text-sm font-bold whitespace-nowrap">By Cash / Cheque No.</span>
-          <div className="border-b-2 border-dotted border-neutral-500 pb-1 px-4 font-mono font-bold text-lg">
+        <div className="flex flex-col border-b-2 border-dotted border-neutral-400 pb-1">
+          <div className="flex justify-between items-center text-[11px] font-bold text-neutral-500 uppercase tracking-wide">
+            <span>By Cash / Cheque No.</span>
+            <span>نقداً / شيك رقم</span>
+          </div>
+          <div className="font-mono font-bold text-lg px-2 py-1">
             {voucher.paymentMethod === 'Cash' ? 'CASH' : (voucher.refNo || '-')}
           </div>
-          <span className="text-sm font-bold text-right whitespace-nowrap">نقداً / شيك رقم</span>
         </div>
 
         {/* Bank & Date Section */}
-        <div className="grid grid-cols-[80px_1fr_60px_60px_150px_60px] items-end gap-2 w-full">
-          <span className="text-sm font-bold">Bank</span>
-          <div className="border-b-2 border-dotted border-neutral-500 pb-1 px-4 italic font-bold">
-            {voucher.bankName || '-'}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="flex flex-col border-b-2 border-dotted border-neutral-400 pb-1">
+            <div className="flex justify-between items-center text-[11px] font-bold text-neutral-500 uppercase tracking-wide">
+              <span>Bank</span>
+              <span>على بنك</span>
+            </div>
+            <div className="italic font-bold px-2 py-1">{voucher.bankName || '-'}</div>
           </div>
-          <span className="text-sm font-bold text-right">على بنك</span>
-          <span className="text-sm font-bold text-center">Dated</span>
-          <div className="border-b-2 border-dotted border-neutral-500 pb-1 text-center font-mono font-bold text-lg">
-             {voucher.refNo && voucher.date ? format(new Date(voucher.date), 'dd/MM/yyyy') : '-'}
+          <div className="flex flex-col border-b-2 border-dotted border-neutral-400 pb-1">
+            <div className="flex justify-between items-center text-[11px] font-bold text-neutral-500 uppercase tracking-wide">
+              <span>Dated</span>
+              <span>بتاريخ</span>
+            </div>
+            <div className="font-mono font-bold text-lg text-center px-2 py-1">
+              {voucher.refNo ? formatDate(voucher.date) : '-'}
+            </div>
           </div>
-          <span className="text-sm font-bold text-right">بتاريخ</span>
         </div>
 
         {/* Purpose Section */}
-        <div className="grid grid-cols-[80px_1fr_80px] items-start gap-3 w-full pt-2">
-          <span className="text-sm font-bold mt-2">Being</span>
-          <div className="border-b-2 border-dotted border-neutral-500 min-h-[80px] px-4 py-2 text-xl font-medium leading-relaxed bg-white/30 rounded">
+        <div className="flex flex-col border-b-2 border-dotted border-neutral-400 pb-1">
+          <div className="flex justify-between items-center text-[11px] font-bold text-neutral-500 uppercase tracking-wide">
+            <span>Being (Purpose)</span>
+            <span>وذلك عن</span>
+          </div>
+          <div className="text-xl font-medium leading-relaxed bg-white/30 rounded px-2 py-2 min-h-[80px] break-words">
             {voucher.purpose}
           </div>
-          <span className="text-sm font-bold text-right mt-2">وذلك عن</span>
         </div>
       </div>
 
       {/* Signature Section */}
-      <div className="grid grid-cols-2 gap-32 mt-20 relative z-10 px-4 pb-4">
-        <div className="flex flex-col gap-4">
-          <div className="flex-1 border-b-2 border-neutral-800 h-10" />
-          <div className="flex justify-between">
-            <span className="text-[12px] font-bold">Receiver's Signature</span>
-            <span className="text-[12px] font-bold">توقيع المستلم</span>
+      <div className="grid grid-cols-2 gap-32 mt-16 relative z-10 px-4 pb-4">
+        <div className="flex flex-col gap-2">
+          <div className="flex-1 border-b-2 border-neutral-800 h-12" />
+          <div className="flex justify-between text-[11px] font-bold">
+            <span>Receiver's Signature</span>
+            <span>توقيع المستلم</span>
           </div>
         </div>
-        <div className="flex flex-col gap-4">
-          <div className="flex-1 border-b-2 border-neutral-800 h-10" />
-          <div className="flex justify-between">
-            <span className="text-[12px] font-bold">Signature</span>
-            <span className="text-[12px] font-bold">التوقيع</span>
+        <div className="flex flex-col gap-2">
+          <div className="flex-1 border-b-2 border-neutral-800 h-12" />
+          <div className="flex justify-between text-[11px] font-bold">
+            <span>Signature</span>
+            <span>التوقيع</span>
           </div>
         </div>
       </div>
@@ -183,4 +208,3 @@ export function VoucherVisual({ voucher }: VoucherVisualProps) {
     </div>
   );
 }
-
