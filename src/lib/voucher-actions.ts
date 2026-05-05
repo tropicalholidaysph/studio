@@ -15,6 +15,7 @@ import {
   Firestore,
   serverTimestamp
 } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { Voucher, Ledger } from "./types";
@@ -35,6 +36,12 @@ export async function getLedgers(): Promise<Ledger[]> {
 
 export async function createLedger(name: string): Promise<Ledger> {
   const db = getDb();
+  const auth = getAuth();
+  
+  if (!auth.currentUser) {
+    throw new Error("Cannot create ledger: No authenticated user session found.");
+  }
+
   const docRef = doc(collection(db, LEDGERS_COLLECTION));
   const ledger = {
     id: docRef.id,

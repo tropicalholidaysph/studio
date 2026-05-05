@@ -78,8 +78,11 @@ export function VoucherTable() {
     if (isUserLoading || !user || ledgersLoading) return;
     
     if (ledgers.length === 0) {
-      // Create default if none exists, only when authenticated
-      createLedger("Sheet1");
+      // Small delay to ensure auth token is fully attached to Firestore context
+      const timer = setTimeout(() => {
+        createLedger("Sheet1");
+      }, 500);
+      return () => clearTimeout(timer);
     } else if (!activeLedgerId) {
       setActiveLedgerId(ledgers[0].id);
     }

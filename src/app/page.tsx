@@ -19,19 +19,23 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (!isClient) return;
+    if (!isClient || isUserLoading) return;
 
-    // Fast check using local storage
     const localAuth = localStorage.getItem("auth");
     
-    // If no local auth and firebase loading finished with no user, redirect
-    if (!isUserLoading && !user && localAuth !== "true") {
+    // If we have no user and no local auth, redirect to login
+    if (!user && localAuth !== "true") {
+      router.push("/login");
+    } 
+    // If localAuth is true but Firebase session is missing after loading, force re-login
+    else if (!user && localAuth === "true") {
+      localStorage.removeItem("auth");
       router.push("/login");
     }
   }, [user, isUserLoading, router, isClient]);
 
   // If we haven't mounted yet or we're waiting for critical auth, show minimal loader
-  if (!isClient || (isUserLoading && !user && localStorage.getItem("auth") === "true")) {
+  if (!isClient || isUserLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background">
         <Loader2 className="w-10 h-10 animate-spin text-primary opacity-50 mb-4" />
@@ -40,8 +44,8 @@ export default function Dashboard() {
     );
   }
 
-  // Security guard
-  if (!user && typeof window !== 'undefined' && localStorage.getItem("auth") !== "true") return null;
+  // Final security guard
+  if (!user) return null;
 
   return (
     <div className="min-h-screen bg-background">
