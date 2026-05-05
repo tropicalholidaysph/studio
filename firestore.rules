@@ -1,17 +1,12 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Standard rules for Tropical Ledger
-    // Allowing full access to authenticated users for the spreadsheet system
-    match /vouchers/{voucherId} {
-      allow read, write: if request.auth != null;
-    }
-    match /ledgers/{ledgerId} {
-      allow read, write: if request.auth != null;
-    }
-    // Fallback wildcard rule
+    // Universal access for any authenticated user in Tropical Ledger
+    // This resolves the list/read permission loops by ensuring broad coverage
     match /{document=**} {
       allow read, write: if request.auth != null;
     }
+    
+    // Deployment trigger comment: v2.0.1
   }
 }
