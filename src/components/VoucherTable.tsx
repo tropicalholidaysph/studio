@@ -232,7 +232,7 @@ export function VoucherTable() {
   const handleExport = () => {
     if (filteredVouchers.length === 0) return;
     
-    // Include VOID records in export as requested
+    // Strictly map data to the columns we want in Excel
     const exportData = filteredVouchers.map(v => ({
       "Voucher No": v.voucherNo,
       "Date": v.date,
@@ -247,22 +247,36 @@ export function VoucherTable() {
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
 
-    // Turn the data into a "Table" style by adding auto-filters
+    // Apply auto-filter to headers
     const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
     worksheet['!autofilter'] = { ref: XLSX.utils.encode_range(range) };
 
-    const wscols = [
-      { wch: 15 }, // Voucher No
-      { wch: 15 }, // Date
-      { wch: 35 }, // Paid To
-      { wch: 15 }, // Amount RO
-      { wch: 10 }, // Amount Bz
-      { wch: 18 }, // Method
-      { wch: 45 }, // Purpose
-      { wch: 20 }, // Bank
-      { wch: 20 }  // Ref No
+    // Set column widths and hide everything from J onwards (index 9)
+    const wscols: any[] = [
+      { wch: 12 }, // A: Voucher No
+      { wch: 12 }, // B: Date
+      { wch: 35 }, // C: Paid To
+      { wch: 14 }, // D: Amount RO
+      { wch: 8 },  // E: Amount Bz
+      { wch: 18 }, // F: Method
+      { wch: 45 }, // G: Purpose
+      { wch: 20 }, // H: Bank
+      { wch: 15 }, // I: Ref No
     ];
+    
+    // Hide columns from J to Z to make it look "fitted"
+    for (let i = 9; i <= 25; i++) {
+      wscols[i] = { hidden: true };
+    }
     worksheet['!cols'] = wscols;
+
+    // Hide extra rows beyond the data to remove "ghost" cells
+    const wsrows: any[] = [];
+    // Hide the next 500 rows to ensure it looks blank below the data
+    for (let i = exportData.length + 1; i <= exportData.length + 500; i++) {
+      wsrows[i] = { hidden: true };
+    }
+    worksheet['!rows'] = wsrows;
 
     const workbook = XLSX.utils.book_new();
     const ledgerName = ledgers.find(l => l.id === activeLedgerId)?.name || "Ledger";
@@ -425,7 +439,7 @@ export function VoucherTable() {
                       className={cn(
                         "border-none h-9 transition-colors",
                         isActuallyVoid 
-                          ? "bg-red-200/80 hover:bg-red-300 dark:bg-red-900/60 dark:hover:bg-red-900/80" 
+                          ? "bg-red-500/20 hover:bg-red-500/30 dark:bg-red-900/40 dark:hover:bg-red-900/60" 
                           : "bg-background hover:bg-muted/10"
                       )}
                     >
