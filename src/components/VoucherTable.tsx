@@ -19,6 +19,7 @@ import {
   DialogTitle, 
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Voucher, PaymentMethod, Ledger } from "@/lib/types";
 import { 
   Search, 
@@ -28,14 +29,18 @@ import {
   Plus, 
   MoreHorizontal, 
   Edit2, 
-  Trash2, 
+  Trash2,
+  Trash,
+  CheckSquare,
+  Square
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { 
   bulkImportVouchers, 
   createLedger, 
   renameLedger, 
-  deleteLedger 
+  deleteLedger,
+  bulkDeleteVouchers
 } from "@/lib/voucher-actions";
 import { convertAmountToWords } from "@/lib/amount-utils";
 import { useToast } from "@/hooks/use-toast";
@@ -72,15 +77,10 @@ function parseExcelDate(val: any): string {
     let m = parseInt(parts[1]) - 1;
     let y = parts[2].length === 2 ? 2000 + parseInt(parts[2]) : parseInt(parts[2]);
 
-    if (d > 31 && y <= 31) { // Probably YYYY-MM-DD
+    if (d > 31 && y <= 31) {
       const tmp = d; d = y; y = tmp;
     }
-    if (d > 12 && m < 12) { // DD/MM/YYYY
-       // keep as is
-    } else if (m > 12 && d <= 12) { // MM/DD/YYYY
-      const tmp = d; d = m + 1; m = tmp - 1;
-    }
-
+    
     const manualDate = new Date(y, m, d);
     if (!isNaN(manualDate.getTime())) return manualDate.toISOString().split('T')[0];
   }
@@ -97,6 +97,8 @@ export function VoucherTable() {
   const [newLedgerName, setNewLedgerName] = useState("");
   const [editingLedger, setEditingLedger] = useState<Ledger | null>(null);
   const [editName, setEditName] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   
   const initRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -110,7 +112,6 @@ export function VoucherTable() {
   const { data: ledgersData, isLoading: ledgersLoading } = useCollection<Ledger>(ledgersQuery);
   const ledgers = ledgersData || [];
 
-  // Handle initialization of the first sheet safely
   useEffect(() => {
     if (isUserLoading || !user || ledgersLoading || initRef.current) return;
     
@@ -121,7 +122,6 @@ export function VoucherTable() {
       return;
     }
 
-    // Only create Sheet1 if the list is truly empty
     initRef.current = true;
     const initializeSheet = async () => {
       try {
@@ -144,6 +144,11 @@ export function VoucherTable() {
 
   const { data: vouchersData, isLoading: vouchersLoading } = useCollection<Voucher>(vouchersQuery);
   const vouchers = vouchersData || [];
+
+  // Reset selection when changing tabs
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [activeLedgerId]);
 
   async function handleAddLedger() {
     if (!newLedgerName.trim() || !firestore || !user) return;
@@ -179,7 +184,7 @@ export function VoucherTable() {
     if (!file || !firestore) return;
 
     setIsImporting(true);
-    toast({ title: "Importing File", description: "Reading multiple sheets..." });
+    toast({ title: "Importing File", description: "Reading all sheets from your file..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -199,7 +204,6 @@ export function VoucherTable() {
 
           let targetLedgerId = existingLedgerMap.get(sheetName.toLowerCase());
           
-          // Create ledger for this sheet if it doesn't exist
           if (!targetLedgerId) {
             const newLedger = await createLedger(sheetName, firestore);
             targetLedgerId = newLedger.id;
@@ -207,7 +211,6 @@ export function VoucherTable() {
           }
 
           const vouchersForSheet = json.map((row: any) => {
-            // Flexible header detection for common fields
             const ro = Number(row["Amount (R.O.)"] || row["RO"] || row["RIYAL"] || row["Amount"] || 0);
             const bz = Number(row["Amount (Bz)"] || row["Bz"] || row["BAISA"] || 0);
             const totalAmount = ro + (bz / 1000);
@@ -217,7 +220,6 @@ export function VoucherTable() {
             if (methodStr.includes("cheque")) method = "Cheque";
             if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
 
-            // Voucher Number detection (searching for specific column types)
             const vNo = row["Voucher No"] || row["Voucher No."] || row["Voucher #"] || row["No"] || row["Sl No"] || row["#"];
 
             return {
@@ -241,7 +243,7 @@ export function VoucherTable() {
           }
         }
 
-        toast({ title: "Success", description: `Imported ${totalImportedCount} records across your sheets.` });
+        toast({ title: "Success", description: `Imported ${totalImportedCount} records across detected sheets.` });
       } catch (error) {
         toast({ variant: "destructive", title: "Import Error", description: "Failed to process the spreadsheet." });
       } finally {
@@ -252,7 +254,6 @@ export function VoucherTable() {
     reader.readAsBinaryString(file);
   };
 
-  // Local client-side sorting to avoid requiring Firestore indexes
   const filteredVouchers = vouchers
     .filter((v) => 
       v.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -261,17 +262,68 @@ export function VoucherTable() {
     )
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredVouchers.length && filteredVouchers.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredVouchers.map(v => v.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    setIsBulkDeleting(true);
+    toast({ title: "Deleting Records", description: `Removing ${selectedIds.size} vouchers...` });
+    
+    try {
+      await bulkDeleteVouchers(Array.from(selectedIds));
+      setSelectedIds(new Set());
+      toast({ title: "Deleted Successfully", description: "Records have been removed from the ledger." });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Error", description: "Failed to delete records." });
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-200px)] min-h-[600px] border rounded-lg bg-white shadow-xl overflow-hidden">
       <div className="p-3 bg-slate-50 border-b flex flex-col sm:flex-row justify-between items-center gap-3 no-print">
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input 
-            placeholder="Search current sheet..." 
-            className="pl-9 h-9 text-xs"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input 
+              placeholder="Search current sheet..." 
+              className="pl-9 h-9 text-xs"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          {selectedIds.size > 0 && (
+            <div className="flex items-center gap-2 bg-primary/10 px-3 py-1 rounded-full border border-primary/20 animate-in fade-in slide-in-from-left-2 duration-300">
+              <span className="text-[11px] font-bold text-primary">{selectedIds.size} selected</span>
+              <Button 
+                variant="destructive" 
+                size="sm" 
+                className="h-7 px-2 text-[10px]"
+                onClick={handleBulkDelete}
+                disabled={isBulkDeleting}
+              >
+                {isBulkDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash className="w-3 h-3 mr-1" />}
+                Delete Selected
+              </Button>
+            </div>
+          )}
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
           <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls" onChange={handleFileUpload} />
@@ -283,7 +335,7 @@ export function VoucherTable() {
             className="h-9 text-xs flex items-center gap-2 border-[#E66E38] text-[#E66E38] hover:bg-[#E66E38] hover:text-white"
           >
             {isImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
-            Import Spreadsheet (Auto-Tabs)
+            Import Spreadsheet (All Sheets)
           </Button>
           <Link href="/vouchers/new">
             <Button size="sm" className="h-9 text-xs bg-[#E66E38] hover:bg-[#E66E38]/90 flex items-center gap-2">
@@ -295,7 +347,7 @@ export function VoucherTable() {
       </div>
 
       <div className="flex-1 overflow-auto relative">
-        {(isImporting || vouchersLoading || ledgersLoading) && (
+        {(isImporting || vouchersLoading || ledgersLoading || isBulkDeleting) && (
           <div className="absolute top-0 left-0 right-0 z-20 h-0.5 bg-orange-100 overflow-hidden">
             <div className="h-full bg-[#E66E38] animate-[shimmer_1s_infinite_linear] bg-[length:200%_100%] bg-gradient-to-r from-[#E66E38]/20 via-[#E66E38] to-[#E66E38]/20" />
           </div>
@@ -304,7 +356,14 @@ export function VoucherTable() {
         <Table className="border-collapse table-fixed w-full">
           <TableHeader className="bg-[#2a4365] sticky top-0 z-10">
             <TableRow className="hover:bg-transparent border-none h-10">
-              <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-16 px-2">No.</TableHead>
+              <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-10 px-2 text-center no-print">
+                <Checkbox 
+                  checked={filteredVouchers.length > 0 && selectedIds.size === filteredVouchers.length}
+                  onCheckedChange={toggleSelectAll}
+                  className="border-white data-[state=checked]:bg-white data-[state=checked]:text-[#2a4365]"
+                />
+              </TableHead>
+              <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-20 px-2">Voucher No.</TableHead>
               <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-24 px-2">Date</TableHead>
               <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-48 px-2">Paid To</TableHead>
               <TableHead className="text-white font-bold text-[11px] border-r border-slate-700 w-24 px-2 text-right">Amt (R.O.)</TableHead>
@@ -319,7 +378,7 @@ export function VoucherTable() {
           <TableBody>
             {filteredVouchers.length === 0 && !vouchersLoading && !ledgersLoading ? (
               <TableRow>
-                <TableCell colSpan={10} className="h-64 text-center text-slate-400 italic text-xs">
+                <TableCell colSpan={11} className="h-64 text-center text-slate-400 italic text-xs">
                   {searchTerm ? "No matching records found." : "This sheet is ready for data entry."}
                 </TableCell>
               </TableRow>
@@ -328,7 +387,14 @@ export function VoucherTable() {
                 <TableRow 
                   key={v.id} 
                   className={idx % 2 === 0 ? "bg-white border-b border-slate-100" : "bg-[#f0f7ff] border-b border-slate-100"}
+                  onClick={() => toggleSelect(v.id)}
                 >
+                  <TableCell className="border-r border-slate-100 px-2 py-1.5 text-center no-print" onClick={(e) => e.stopPropagation()}>
+                    <Checkbox 
+                      checked={selectedIds.has(v.id)}
+                      onCheckedChange={() => toggleSelect(v.id)}
+                    />
+                  </TableCell>
                   <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-mono text-[#DB0D3A] font-bold">{v.voucherNo}</TableCell>
                   <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px]">{v.date}</TableCell>
                   <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-bold text-slate-800">{v.recipient}</TableCell>
@@ -338,7 +404,7 @@ export function VoucherTable() {
                   <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate" title={v.purpose}>{v.purpose}</TableCell>
                   <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate text-slate-500 italic">{v.bankName || "-"}</TableCell>
                   <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] truncate font-mono">{v.refNo || "-"}</TableCell>
-                  <TableCell className="px-2 py-1 text-center no-print">
+                  <TableCell className="px-2 py-1 text-center no-print" onClick={(e) => e.stopPropagation()}>
                     <Link href={`/vouchers/${v.id}`}>
                       <Button variant="ghost" size="icon" className="h-6 w-6 text-[#E66E38] hover:text-white hover:bg-[#E66E38]">
                         <Eye className="w-3.5 h-3.5" />
@@ -391,7 +457,7 @@ export function VoucherTable() {
           </TabsList>
         </Tabs>
         <div className="px-4 text-[10px] text-slate-400 font-medium">
-          {filteredVouchers.length} Records
+          {filteredVouchers.length} Records {selectedIds.size > 0 && `(${selectedIds.size} selected)`}
         </div>
       </div>
 

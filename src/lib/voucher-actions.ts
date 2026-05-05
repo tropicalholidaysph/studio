@@ -41,7 +41,6 @@ export async function createLedger(name: string, db: Firestore): Promise<Ledger>
     createdAt: new Date().toISOString()
   };
   
-  // We await this during import to ensure IDs are ready and state is consistent
   await setDoc(docRef, ledger).catch(err => {
     errorEmitter.emit('permission-error', new FirestorePermissionError({
       path: docRef.path,
@@ -99,6 +98,25 @@ export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'created
   }
   
   return { success: true, count: vouchers.length };
+}
+
+export async function bulkDeleteVouchers(ids: string[]) {
+  const db = getDb();
+  const chunkSize = 400;
+
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const batch = writeBatch(db);
+    
+    chunk.forEach((id) => {
+      const docRef = doc(db, VOUCHERS_COLLECTION, id);
+      batch.delete(docRef);
+    });
+    
+    await batch.commit();
+  }
+  
+  return { success: true };
 }
 
 export function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>, db: Firestore) {
