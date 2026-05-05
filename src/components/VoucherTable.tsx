@@ -150,7 +150,7 @@ export function VoucherTable() {
     if (!file || !firestore || !user) return;
 
     setIsImporting(true);
-    toast({ title: "Importing Ledger", description: "Processing first 50 rows per sheet..." });
+    toast({ title: "Importing Ledger", description: "Cleaning empty rows and processing data..." });
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -164,6 +164,7 @@ export function VoucherTable() {
 
         for (const sheetName of workbook.SheetNames) {
           const worksheet = workbook.Sheets[sheetName];
+          // Take only first 50 rows as per requirement
           const rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: null }).slice(0, 50) as any[];
           
           if (rawJson.length === 0) continue;
@@ -177,15 +178,25 @@ export function VoucherTable() {
             if (!activeLedgerId) setActiveLedgerId(targetLedgerId);
           }
 
-          const vouchersForSheet = rawJson.map((row: any, index: number) => {
-            const vNoRaw = row["Voucher No"] || row["Sl No"] || row["No"] || row["#"] || String(index + 1);
-            const vNo = String(vNoRaw).replace(/\D/g, '').trim(); 
-            
+          const vouchersForSheet: any[] = [];
+
+          rawJson.forEach((row: any, index: number) => {
+            // Check if row is actually empty (no recipient AND no amount AND no purpose)
             const recipient = row["Paid To"] || row["Recipient"];
             const ro = Number(row["Amount (R.O.)"] || row["RO"] || 0);
             const bz = Number(row["Amount (Bz)"] || row["Bz"] || 0);
+            const purpose = String(row["Being (Purpose)"] || row["Purpose"] || "").trim();
+            const vNoRaw = row["Voucher No"] || row["Sl No"] || row["No"] || row["#"];
+
+            // If the entire row has no significant data, SKIP IT entirely.
+            if (!recipient && ro === 0 && bz === 0 && !purpose && !vNoRaw) {
+              return;
+            }
+
+            // Clean the voucher number - if not present, use index but don't force VOID for blank excel rows
+            const vNo = vNoRaw ? String(vNoRaw).replace(/\D/g, '').trim() : String(index + 1);
             
-            const isVoid = !recipient || (!ro && !bz);
+            const isVoid = !recipient || (ro === 0 && bz === 0);
             const totalAmount = ro + (bz / 1000);
             
             let method: PaymentMethod = "Cash";
@@ -193,7 +204,7 @@ export function VoucherTable() {
             if (methodStr.includes("cheque")) method = "Cheque";
             if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
 
-            return {
+            vouchersForSheet.push({
               voucherNo: vNo, 
               date: parseExcelDate(row["Date"]),
               recipient: recipient ? String(recipient) : "VOID / NO DATA",
@@ -203,10 +214,10 @@ export function VoucherTable() {
               paymentMethod: method,
               bankName: String(row["Bank"] || ""),
               refNo: String(row["Cheque/Ref No"] || row["Ref No"] || row["Ref"] || ""),
-              purpose: String(row["Being (Purpose)"] || row["Purpose"] || "N/A"),
+              purpose: purpose || "N/A",
               ledgerId: targetLedgerId as string,
               isVoid: isVoid
-            };
+            });
           });
 
           if (vouchersForSheet.length > 0) {
@@ -215,7 +226,7 @@ export function VoucherTable() {
           }
         }
 
-        toast({ title: "Sync Complete", description: `Synchronized ${totalImportedCount} entries.` });
+        toast({ title: "Sync Complete", description: `Synchronized ${totalImportedCount} clean entries.` });
       } catch (error) {
         toast({ variant: "destructive", title: "Import Error", description: "Failed to process spreadsheet." });
       } finally {
@@ -261,8 +272,7 @@ export function VoucherTable() {
     XLSX.writeFile(workbook, `${ledgerName}_Export.xlsx`);
   };
 
-  // Strictly Descending Sort (Latest at Top) based on numeric voucher number
-  // This ensures valid/higher-numbered records appear first.
+  // Strictly Ascending Sort (1 to 50) per requirement
   const filteredVouchers = vouchers
     .filter((v) => 
       v.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -272,8 +282,8 @@ export function VoucherTable() {
     .sort((a, b) => {
       const numA = parseInt(a.voucherNo) || 0;
       const numB = parseInt(b.voucherNo) || 0;
-      if (numA !== numB) return numB - numA; // Descending
-      return new Date(b.date).getTime() - new Date(a.date).getTime();
+      if (numA !== numB) return numA - numB; // Ascending
+      return new Date(a.date).getTime() - new Date(b.date).getTime();
     });
 
   const toggleSelectAll = () => {
@@ -377,7 +387,7 @@ export function VoucherTable() {
           <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8 text-center">
             <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
             <h3 className="text-lg font-bold text-slate-600 mb-1">Spreadsheet Dashboard</h3>
-            <p className="max-w-xs text-sm">Upload your Excel files. The system handles 50 rows per sheet sequentially.</p>
+            <p className="max-w-xs text-sm">Upload your Excel files. The system handles 50 clean rows per sheet sequentially.</p>
           </div>
         ) : (
           <Table className="border-collapse table-fixed w-full">
@@ -406,7 +416,7 @@ export function VoucherTable() {
               {filteredVouchers.length === 0 && !vouchersLoading ? (
                 <TableRow>
                   <TableCell colSpan={11} className="h-64 text-center text-slate-400 italic text-xs">
-                    No records in this ledger.
+                    No records found. Import a file to get started.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -427,7 +437,7 @@ export function VoucherTable() {
                     <TableCell className={cn("border-r border-slate-100 px-2 py-1.5 text-[11px] font-mono font-bold", v.isVoid && "text-white")}>
                       {v.voucherNo}
                     </TableCell>
-                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px]">{v.isVoid ? "VOID" : v.date}</TableCell>
+                    <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px]">{v.isVoid && v.recipient === "VOID / NO DATA" ? "VOID" : v.date}</TableCell>
                     <TableCell className="border-r border-slate-100 px-2 py-1.5 text-[11px] font-bold">
                       {v.recipient}
                     </TableCell>
