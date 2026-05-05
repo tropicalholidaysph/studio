@@ -232,6 +232,7 @@ export function VoucherTable() {
   const handleExport = () => {
     if (filteredVouchers.length === 0) return;
     
+    // Include VOID records in export as requested
     const exportData = filteredVouchers.map(v => ({
       "Voucher No": v.voucherNo,
       "Date": v.date,
@@ -245,6 +246,10 @@ export function VoucherTable() {
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
+
+    // Turn the data into a "Table" style by adding auto-filters
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+    worksheet['!autofilter'] = { ref: XLSX.utils.encode_range(range) };
 
     const wscols = [
       { wch: 15 }, // Voucher No
@@ -413,14 +418,14 @@ export function VoucherTable() {
                 </TableRow>
               ) : (
                 filteredVouchers.map((v) => {
-                  const isActuallyVoid = v.isVoid || v.recipient === "VOID / NO DATA";
+                  const isActuallyVoid = v.isVoid || v.recipient === "VOID / NO DATA" || v.sumInWords === "VOID";
                   return (
                     <TableRow 
                       key={v.id} 
                       className={cn(
                         "border-none h-9 transition-colors",
                         isActuallyVoid 
-                          ? "bg-red-100/80 hover:bg-red-200 dark:bg-red-900/40 dark:hover:bg-red-900/50" 
+                          ? "bg-red-200/80 hover:bg-red-300 dark:bg-red-900/60 dark:hover:bg-red-900/80" 
                           : "bg-background hover:bg-muted/10"
                       )}
                     >
