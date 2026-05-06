@@ -33,7 +33,8 @@ import {
   Edit2, 
   Trash2,
   Trash,
-  AlertCircle
+  AlertCircle,
+  Download
 } from "lucide-react";
 import * as XLSX from "xlsx-js-style";
 import { 
@@ -53,7 +54,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFirebase, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, query, orderBy, where } from "firebase/firestore";
+import { collection, query, orderBy, where, getDocs } from "firebase/firestore";
 import { cn } from "@/lib/utils";
 
 function parseExcelDate(val: any): string {
@@ -87,6 +88,7 @@ export function VoucherTable() {
   const [activeLedgerId, setActiveLedgerId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [isImporting, setIsImporting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [isAddingLedger, setIsAddingLedger] = useState(false);
   const [newLedgerName, setNewLedgerName] = useState("");
   const [editingLedger, setEditingLedger] = useState<Ledger | null>(null);
@@ -230,82 +232,111 @@ export function VoucherTable() {
     reader.readAsBinaryString(file);
   };
 
-  const handleExport = () => {
-    if (filteredVouchers.length === 0) return;
+  const handleExportFullFile = async () => {
+    if (!firestore || ledgers.length === 0) return;
     
-    const header = [
-      "Voucher No", 
-      "Date", 
-      "Paid To", 
-      "Amount (R.O.)", 
-      "Amount (Bz)", 
-      "Payment Method", 
-      "Being (Purpose)", 
-      "Bank", 
-      "Ref No"
-    ];
+    setIsExporting(true);
+    toast({ title: "Compiling Workbook", description: "Preparing all ledger sheets..." });
     
-    const rows = filteredVouchers.map(v => [
-      v.voucherNo,
-      v.date,
-      v.recipient,
-      v.amountRO,
-      v.amountBz,
-      v.paymentMethod,
-      v.purpose,
-      v.bankName || "",
-      v.refNo || ""
-    ]);
+    try {
+      const workbook = XLSX.utils.book_new();
+      
+      // Fetch all vouchers from database
+      const vRef = collection(firestore, "vouchers");
+      const snapshot = await getDocs(vRef);
+      const allVouchers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Voucher));
 
-    const data = [header, ...rows];
-    const worksheet = XLSX.utils.aoa_to_sheet(data);
+      for (const ledger of ledgers) {
+        const ledgerVouchers = allVouchers
+          .filter(v => v.ledgerId === ledger.id)
+          .sort((a, b) => {
+            const numA = parseInt(a.voucherNo) || 0;
+            const numB = parseInt(b.voucherNo) || 0;
+            if (numA !== numB) return numA - numB;
+            return new Date(a.date).getTime() - new Date(b.date).getTime();
+          });
 
-    // CRITICAL FIX: Use Excel's internal View property to disable gridlines.
-    // This is the "Native Border Feature" that hides gridlines globally for the sheet
-    // without painting cells, which keeps the file size in the Kilobyte range.
-    worksheet["!views"] = [{ showGridLines: false }];
+        if (ledgerVouchers.length === 0) continue;
 
-    // Column Widths
-    const wscols: any[] = [
-      { wch: 12 }, { wch: 12 }, { wch: 35 }, { wch: 14 }, 
-      { wch: 8 }, { wch: 18 }, { wch: 45 }, { wch: 20 }, { wch: 15 }
-    ];
-    worksheet['!cols'] = wscols;
+        const header = [
+          "Voucher No", 
+          "Date", 
+          "Paid To", 
+          "Amount (R.O.)", 
+          "Amount (Bz)", 
+          "Payment Method", 
+          "Being (Purpose)", 
+          "Bank", 
+          "Ref No"
+        ];
+        
+        const rows = ledgerVouchers.map(v => [
+          v.voucherNo,
+          v.date,
+          v.recipient,
+          v.amountRO,
+          v.amountBz,
+          v.paymentMethod,
+          v.purpose,
+          v.bankName || "",
+          v.refNo || ""
+        ]);
 
-    // Define table borders only for the data range
-    const tableBorderStyle = {
-      top: { style: "thin", color: { rgb: "333333" } },
-      bottom: { style: "thin", color: { rgb: "333333" } },
-      left: { style: "thin", color: { rgb: "333333" } },
-      right: { style: "thin", color: { rgb: "333333" } }
-    };
+        const data = [header, ...rows];
+        const worksheet = XLSX.utils.aoa_to_sheet(data);
 
-    // Apply styling to the data table only
-    for (let R = 0; R < data.length; R++) {
-      for (let C = 0; C < header.length; C++) {
-        const addr = XLSX.utils.encode_cell({ r: R, c: C });
-        if (!worksheet[addr]) continue;
+        // GRIDLINE FIX: Hide gridlines for this specific sheet
+        worksheet["!views"] = [{ showGridLines: false }];
 
-        const cellStyle: any = {
-          border: tableBorderStyle,
-          fill: { patternType: "solid", fgColor: { rgb: "FFFFFF" } },
-          font: { sz: 10 }
+        // Column Widths
+        const wscols: any[] = [
+          { wch: 12 }, { wch: 12 }, { wch: 35 }, { wch: 14 }, 
+          { wch: 8 }, { wch: 18 }, { wch: 45 }, { wch: 20 }, { wch: 15 }
+        ];
+        worksheet['!cols'] = wscols;
+
+        // Apply table borders to data range
+        const tableBorderStyle = {
+          top: { style: "thin", color: { rgb: "333333" } },
+          bottom: { style: "thin", color: { rgb: "333333" } },
+          left: { style: "thin", color: { rgb: "333333" } },
+          right: { style: "thin", color: { rgb: "333333" } }
         };
 
-        if (R === 0) {
-          // Header styling
-          cellStyle.fill = { patternType: "solid", fgColor: { rgb: "E66E38" } };
-          cellStyle.font = { color: { rgb: "FFFFFF" }, bold: true, sz: 10 };
-        }
-        
-        worksheet[addr].s = cellStyle;
-      }
-    }
+        for (let R = 0; R < data.length; R++) {
+          for (let C = 0; C < header.length; C++) {
+            const addr = XLSX.utils.encode_cell({ r: R, c: C });
+            if (!worksheet[addr]) continue;
 
-    const workbook = XLSX.utils.book_new();
-    const ledgerName = ledgers.find(l => l.id === activeLedgerId)?.name || "Ledger";
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Ledger");
-    XLSX.writeFile(workbook, `${ledgerName}_Export.xlsx`);
+            const cellStyle: any = {
+              border: tableBorderStyle,
+              fill: { patternType: "solid", fgColor: { rgb: "FFFFFF" } },
+              font: { sz: 10 }
+            };
+
+            if (R === 0) {
+              cellStyle.fill = { patternType: "solid", fgColor: { rgb: "E66E38" } };
+              cellStyle.font = { color: { rgb: "FFFFFF" }, bold: true, sz: 10 };
+            }
+            
+            worksheet[addr].s = cellStyle;
+          }
+        }
+
+        // Add sheet with safe name
+        const sheetName = ledger.name.substring(0, 31).replace(/[\[\]\*\?\/\\\:]/g, '');
+        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName || `Sheet_${ledger.id.substring(0,5)}`);
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      XLSX.writeFile(workbook, `Tropical_Ledger_Complete_${today}.xlsx`);
+      toast({ title: "Export Ready", description: "Complete workbook downloaded." });
+    } catch (error) {
+      console.error("Export error:", error);
+      toast({ variant: "destructive", title: "Export Error", description: "Could not generate full file." });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const filteredVouchers = vouchers
@@ -360,7 +391,7 @@ export function VoucherTable() {
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
-              placeholder="Search active ledger..." 
+              placeholder="Search current sheet..." 
               className="pl-9 h-9 text-xs bg-background"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -390,29 +421,29 @@ export function VoucherTable() {
             className="h-9 text-xs border-primary text-primary hover:bg-primary hover:text-primary-foreground"
           >
             {isImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
-            Import File
+            Import Data
           </Button>
           <Button 
             variant="outline" 
             size="sm"
-            onClick={handleExport}
-            disabled={filteredVouchers.length === 0}
+            onClick={handleExportFullFile}
+            disabled={ledgers.length === 0 || isExporting}
             className="h-9 text-xs border-emerald-600 text-emerald-600 hover:bg-emerald-600 hover:text-white"
           >
-            <FileDown className="w-3 h-3" />
-            Export Ledger
+            {isExporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+            Export Full Workbook
           </Button>
           <Link href="/vouchers/new">
             <Button size="sm" className="h-9 text-xs bg-primary hover:bg-primary/90 text-primary-foreground">
               <Plus className="w-3 h-3" />
-              New Entry
+              New Voucher
             </Button>
           </Link>
         </div>
       </div>
 
       <div className="flex-1 overflow-auto relative bg-background">
-        {(isImporting || vouchersLoading || ledgersLoading || isBulkDeleting) && (
+        {(isImporting || vouchersLoading || ledgersLoading || isBulkDeleting || isExporting) && (
           <div className="absolute top-0 left-0 right-0 z-20 h-0.5 bg-primary/20 overflow-hidden">
             <div className="h-full bg-primary animate-[shimmer_1s_infinite_linear] bg-[length:200%_100%] bg-gradient-to-r from-primary/20 via-primary to-primary/20" />
           </div>
@@ -421,8 +452,8 @@ export function VoucherTable() {
         {ledgers.length === 0 && !ledgersLoading ? (
           <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
             <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
-            <h3 className="text-lg font-bold mb-1">Sequential Ledger</h3>
-            <p className="max-w-xs text-sm opacity-70">Upload your Excel files to populate the digital ledger.</p>
+            <h3 className="text-lg font-bold mb-1">Financial Database Empty</h3>
+            <p className="max-w-xs text-sm opacity-70">Import an Excel ledger or create a new sheet to begin management.</p>
           </div>
         ) : (
           <Table className="border-collapse table-fixed w-full">
@@ -451,7 +482,7 @@ export function VoucherTable() {
               {filteredVouchers.length === 0 && !vouchersLoading ? (
                 <TableRow>
                   <TableCell colSpan={11} className="h-64 text-center text-muted-foreground italic text-xs">
-                    No records found. Import a file to get started.
+                    No records found in this sheet.
                   </TableCell>
                 </TableRow>
               ) : (
