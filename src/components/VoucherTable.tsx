@@ -282,7 +282,7 @@ export function VoucherTable() {
         const data = [header, ...rows];
         const worksheet = XLSX.utils.aoa_to_sheet(data);
 
-        // NATIVE GRIDLINE HIDE: No manual painting, just native Excel property
+        // Native Gridline Hiding
         worksheet["!views"] = [{ showGridLines: false }];
 
         const wscols: any[] = [
@@ -310,11 +310,9 @@ export function VoucherTable() {
             };
 
             if (R === 0) {
-              // Header Style
               cellStyle.fill = { patternType: "solid", fgColor: { rgb: "E66E38" } };
               cellStyle.font = { color: { rgb: "FFFFFF" }, bold: true, sz: 10 };
             } else {
-              // Data Row Style - Check if VOID
               const v = ledgerVouchers[R - 1];
               const isActuallyVoid = v.isVoid || v.recipient === "VOID / NO DATA" || String(v.recipient).includes("VOID") || (v.amountRO === 0 && v.amountBz === 0);
               
