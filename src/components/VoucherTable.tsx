@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -25,7 +24,6 @@ import { Voucher, PaymentMethod, Ledger } from "@/lib/types";
 import { 
   Search, 
   FileUp, 
-  FileDown,
   Eye, 
   Loader2, 
   Plus, 
@@ -241,7 +239,6 @@ export function VoucherTable() {
     try {
       const workbook = XLSX.utils.book_new();
       
-      // Fetch all vouchers from database
       const vRef = collection(firestore, "vouchers");
       const snapshot = await getDocs(vRef);
       const allVouchers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Voucher));
@@ -285,17 +282,15 @@ export function VoucherTable() {
         const data = [header, ...rows];
         const worksheet = XLSX.utils.aoa_to_sheet(data);
 
-        // GRIDLINE FIX: Hide gridlines for this specific sheet
+        // NATIVE GRIDLINE HIDE: No manual painting, just native Excel property
         worksheet["!views"] = [{ showGridLines: false }];
 
-        // Column Widths
         const wscols: any[] = [
           { wch: 12 }, { wch: 12 }, { wch: 35 }, { wch: 14 }, 
           { wch: 8 }, { wch: 18 }, { wch: 45 }, { wch: 20 }, { wch: 15 }
         ];
         worksheet['!cols'] = wscols;
 
-        // Apply table borders to data range
         const tableBorderStyle = {
           top: { style: "thin", color: { rgb: "333333" } },
           bottom: { style: "thin", color: { rgb: "333333" } },
@@ -308,22 +303,31 @@ export function VoucherTable() {
             const addr = XLSX.utils.encode_cell({ r: R, c: C });
             if (!worksheet[addr]) continue;
 
-            const cellStyle: any = {
+            let cellStyle: any = {
               border: tableBorderStyle,
               fill: { patternType: "solid", fgColor: { rgb: "FFFFFF" } },
               font: { sz: 10 }
             };
 
             if (R === 0) {
+              // Header Style
               cellStyle.fill = { patternType: "solid", fgColor: { rgb: "E66E38" } };
               cellStyle.font = { color: { rgb: "FFFFFF" }, bold: true, sz: 10 };
+            } else {
+              // Data Row Style - Check if VOID
+              const v = ledgerVouchers[R - 1];
+              const isActuallyVoid = v.isVoid || v.recipient === "VOID / NO DATA" || String(v.recipient).includes("VOID") || (v.amountRO === 0 && v.amountBz === 0);
+              
+              if (isActuallyVoid) {
+                cellStyle.fill = { patternType: "solid", fgColor: { rgb: "EF4444" } };
+                cellStyle.font = { color: { rgb: "FFFFFF" }, bold: true, sz: 10 };
+              }
             }
             
             worksheet[addr].s = cellStyle;
           }
         }
 
-        // Add sheet with safe name
         const sheetName = ledger.name.substring(0, 31).replace(/[\[\]\*\?\/\\\:]/g, '');
         XLSX.utils.book_append_sheet(workbook, worksheet, sheetName || `Sheet_${ledger.id.substring(0,5)}`);
       }
