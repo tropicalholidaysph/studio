@@ -1,29 +1,47 @@
-# Tropical Holidays - Secure Ledger V2.0
+# Tropical Holidays - Secure Ledger
 
-Digital Payment Voucher System for Tropical Holidays.
+Professional internal voucher management and financial ledger system for Tropical Holidays. This application streamlines the payment voucher workflow with real-time synchronization and secure multi-role access.
 
-## Deployment Guide (Free Hosting)
+## System Overview
 
-### Option A: Firebase App Hosting (Recommended)
-1. **Download Code:** Click the download icon in the project header in Firebase Studio.
-2. **Push to GitHub:**
-   - Create a private repo on [GitHub](https://github.com).
-   - Use [GitHub Desktop](https://desktop.github.com/) to upload your files easily.
-3. **Connect to Firebase:**
-   - Go to [Firebase Console](https://console.firebase.google.com/).
-   - Select **App Hosting** from the sidebar.
-   - Connect your GitHub repo.
-4. **Environment Variables:**
-   - Add your `GEMINI_API_KEY` in the App Hosting settings so AI features work.
+The Tropical Holidays Secure Ledger is designed for high-efficiency financial tracking. It allows staff to manage payment vouchers across different ledger sheets with automated processing and robust security.
 
-### Option B: Vercel (Fastest for Next.js)
-1. Push your code to GitHub.
-2. Go to [Vercel.com](https://vercel.com) and sign in with GitHub.
-3. Import your repository.
-4. Paste the variables from your `src/firebase/config.ts` into Vercel's Environment Variables section.
+### Core Features
+- **Voucher Management:** Create, view, edit, and search payment vouchers with automated sequential numbering.
+- **Multi-Ledger Sheets:** Organize vouchers into separate tabs powered by Firebase Firestore.
+- **Excel Integration:** Support for bulk importing from and exporting to formatted Excel workbooks.
+- **Automated Processing:** Real-time conversion of numerical amounts to professional text representations.
+- **Modern UI:** Responsive, high-performance interface with dark mode support.
 
-## Features
-- **Sequential Voucher Numbering:** Automatically calculates the next number based on the selected ledger sheet.
-- **Excel Synchronization:** Import and Export full workbooks with multiple sheets.
-- **Visual Vouchers:** Professional, printable vouchers with automated "Amount to Words" conversion.
-- **Security:** Anonymous session protection and secure ledger isolation.
+## Access Control
+
+The system uses a two-tiered role-based access control (RBAC) model:
+
+- **Admin:** Full system access, including ledger management (creating/renaming/deleting sheets), data imports, and record deletion.
+- **Employee:** Operational access to create, view, edit, and export data. Restricted from administrative and destructive actions.
+
+## Deployment Guide
+
+### Firebase App Hosting (Recommended)
+
+1. **Repository Setup:**
+   - Create a private repository on [GitHub](https://github.com).
+   - Push the project source code to your repository.
+2. **Firebase Configuration:**
+   - Navigate to the [Firebase Console](https://console.firebase.google.com/).
+   - Select **App Hosting** from the build menu.
+   - Connect your GitHub repository and follow the wizard to set up the build pipeline.
+3. **Environment Variables:**
+   - Ensure all necessary Firebase configuration variables are set in the App Hosting settings.
+
+### Vercel Deployment
+
+1. **Import Project:**
+   - Go to [Vercel](https://vercel.com) and import your GitHub repository.
+2. **Environment Configuration:**
+   - During the setup, add your Firebase environment variables (found in `src/firebase/config.ts`) to the **Environment Variables** section in the Vercel dashboard.
+3. **Deploy:**
+   - Click deploy. Vercel will automatically detect the Next.js framework and build your application.
+
+---
+© 2026 Tropical Holidays. Confidential and Proprietary.

@@ -7,8 +7,12 @@ import { ThemeProvider } from '@/components/theme-provider';
 import { RoleProvider } from '@/lib/role-context';
 
 export const metadata: Metadata = {
-  title: 'Tropical Holidays - Voucher Management System',
-  description: 'Digital Payment Voucher System for Tropical Holidays',
+  title: "Tropical Holidays – Secure Ledger",
+  description: "Internal voucher management system for Tropical Holidays",
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({
