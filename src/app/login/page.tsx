@@ -1,28 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/firebase";
+import { useAuth, initializeFirebase } from "@/firebase";
 import { signInAnonymously } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ShieldCheck, Shield } from "lucide-react";
 import { ModeToggle } from "@/components/ModeToggle";
 import { useRole, UserRole } from "@/lib/role-context";
-import { initializeFirebase } from "@/firebase";
 
 const ACCESS_CODES: Record<string, { role: UserRole; label: string }> = {
   [process.env.NEXT_PUBLIC_ADMIN_KEY!]: { role: "admin", label: "Administrator" },
   [process.env.NEXT_PUBLIC_EMPLOYEE_KEY!]: { role: "employee", label: "Employee" },
 };
 
-export default function LoginPage() {
+function LoginContent() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -52,7 +50,6 @@ export default function LoginPage() {
         const user = userCredential.user;
         const { firestore } = initializeFirebase();
 
-        // Save role to Firestore for security rules enforcement
         await setDoc(doc(firestore, "user_roles", user.uid), {
           role: matched.role,
           updatedAt: new Date().toISOString()
@@ -134,9 +131,21 @@ export default function LoginPage() {
         </CardContent>
         <CardFooter className="flex flex-col gap-2 justify-center text-xs text-muted-foreground border-t pt-4">
           <p>&copy; {new Date().getFullYear()} Tropical Holidays</p>
-          <p className="opacity-50 font-mono">Secure Ledger V2.0</p>
+          <p className="opacity-50 font-mono">Secure Ledger V1.1.0</p>
         </CardFooter>
       </Card>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   );
 }
