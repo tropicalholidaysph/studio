@@ -1,5 +1,4 @@
-
-'use client';
+"use client";
 
 import { initializeFirebase } from "@/firebase";
 import {
@@ -15,8 +14,7 @@ import {
   deleteDoc,
   Firestore,
   where,
-  runTransaction,
-  increment
+  runTransaction
 } from "firebase/firestore";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -32,6 +30,18 @@ async function getRole(uid: string): Promise<UserRole | null> {
     return docSnap.data().role as UserRole;
   }
   return null;
+}
+
+async function logActivity(action: string, detail: string, uid: string, role: string) {
+  const db = getDb();
+  const logRef = doc(collection(db, "activity_logs"));
+  await setDoc(logRef, {
+    action,
+    detail,
+    uid,
+    role,
+    timestamp: new Date().toISOString(),
+  });
 }
 
 const VOUCHERS_COLLECTION = "vouchers";
@@ -67,6 +77,8 @@ export async function createLedger(name: string, db: Firestore, uid: string): Pr
     }));
   });
 
+  await logActivity("CREATE_LEDGER", `Sheet: ${name}`, uid, role!);
+
   return ledger;
 }
 
@@ -77,13 +89,14 @@ export async function renameLedger(id: string, newName: string, uid: string) {
   }
   const db = getDb();
   const docRef = doc(db, LEDGERS_COLLECTION, id);
-  updateDoc(docRef, { name: newName }).catch(err => {
+  await updateDoc(docRef, { name: newName }).catch(err => {
     errorEmitter.emit('permission-error', new FirestorePermissionError({
       path: docRef.path,
       operation: 'update',
       requestResourceData: { name: newName }
     }));
   });
+  await logActivity("RENAME_LEDGER", `ID: ${id} -> ${newName}`, uid, role!);
 }
 
 export async function deleteLedger(id: string, uid: string) {
@@ -93,12 +106,13 @@ export async function deleteLedger(id: string, uid: string) {
   }
   const db = getDb();
   const docRef = doc(db, LEDGERS_COLLECTION, id);
-  deleteDoc(docRef).catch(err => {
+  await deleteDoc(docRef).catch(err => {
     errorEmitter.emit('permission-error', new FirestorePermissionError({
       path: docRef.path,
       operation: 'delete'
     }));
   });
+  await logActivity("DELETE_LEDGER", `ID: ${id}`, uid, role!);
 }
 
 export async function getNextVoucherNumber(ledgerId: string): Promise<number> {
@@ -107,10 +121,26 @@ export async function getNextVoucherNumber(ledgerId: string): Promise<number> {
 
   const newCount = await runTransaction(db, async (transaction) => {
     const counterDoc = await transaction.get(counterRef);
-    const current = counterDoc.exists() ? counterDoc.data().count : 0;
-    const next = current + 1;
-    transaction.set(counterRef, { count: next }, { merge: true });
-    return next;
+
+    if (counterDoc.exists()) {
+      const next = counterDoc.data().count + 1;
+      transaction.set(counterRef, { count: next }, { merge: true });
+      return next;
+    } else {
+      const existingQ = query(
+        collection(db, VOUCHERS_COLLECTION),
+        where("ledgerId", "==", ledgerId)
+      );
+      const existingSnap = await getDocs(existingQ);
+      const maxExisting = existingSnap.docs.reduce((max, d) => {
+        const n = parseInt(d.data().voucherNo) || 0;
+        return n > max ? n : max;
+      }, 0);
+
+      const next = maxExisting + 1;
+      transaction.set(counterRef, { count: next });
+      return next;
+    }
   });
 
   return newCount;
@@ -118,7 +148,10 @@ export async function getNextVoucherNumber(ledgerId: string): Promise<number> {
 
 // --- Voucher Actions ---
 
-export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'createdAt'>[]) {
+export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'createdAt'>[], uid: string) {
+  const role = await getRole(uid);
+  if (!role) throw new Error("Unauthorized");
+  
   const db = getDb();
   const chunkSize = 400;
   const now = new Date().toISOString();
@@ -137,6 +170,8 @@ export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'created
 
     await batch.commit();
   }
+
+  await logActivity("BULK_IMPORT", `Imported ${vouchers.length} vouchers`, uid, role);
 
   return { success: true, count: vouchers.length };
 }
@@ -161,6 +196,8 @@ export async function bulkDeleteVouchers(ids: string[], uid: string) {
     await batch.commit();
   }
 
+  await logActivity("BULK_DELETE", `Deleted ${ids.length} vouchers`, uid, role);
+
   return { success: true };
 }
 
@@ -184,6 +221,8 @@ export async function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>, 
     }));
   });
 
+  await logActivity("CREATE_VOUCHER", `Voucher #${voucher.voucherNo} for ${voucher.recipient}`, uid, role!);
+
   return { success: true, id };
 }
 
@@ -205,6 +244,8 @@ export async function updateVoucher(id: string, voucherData: Partial<Voucher>, d
     }));
   });
 
+  await logActivity("EDIT_VOUCHER", `Voucher ID: ${id}`, uid, role!);
+
   return { success: true };
 }
 
@@ -221,6 +262,7 @@ export async function getVoucherById(id: string): Promise<Voucher | null> {
     return null;
   }
 }
+
 export async function voidVoucher(id: string, uid: string) {
   const role = await getRole(uid);
   if (role !== 'admin' && role !== 'employee') throw new Error("Unauthorized");
@@ -233,4 +275,6 @@ export async function voidVoucher(id: string, uid: string) {
     sumInWords: "VOID",
     updatedAt: new Date().toISOString(),
   });
+
+  await logActivity("VOID_VOUCHER", `Voucher ID: ${id}`, uid, role!);
 }

@@ -15,9 +15,12 @@ import { Loader2, ShieldCheck, Shield } from "lucide-react";
 import { ModeToggle } from "@/components/ModeToggle";
 import { useRole, UserRole } from "@/lib/role-context";
 
+const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_KEY || "tropicalholidays";
+const EMPLOYEE_KEY = process.env.NEXT_PUBLIC_EMPLOYEE_KEY || "tholidays";
+
 const ACCESS_CODES: Record<string, { role: UserRole; label: string }> = {
-  [process.env.NEXT_PUBLIC_ADMIN_KEY!]: { role: "admin", label: "Administrator" },
-  [process.env.NEXT_PUBLIC_EMPLOYEE_KEY!]: { role: "employee", label: "Employee" },
+  [ADMIN_KEY]: { role: "admin", label: "Administrator" },
+  [EMPLOYEE_KEY]: { role: "employee", label: "Employee" },
 };
 
 function LoginContent() {
@@ -131,7 +134,7 @@ function LoginContent() {
         </CardContent>
         <CardFooter className="flex flex-col gap-2 justify-center text-xs text-muted-foreground border-t pt-4">
           <p>&copy; {new Date().getFullYear()} Tropical Holidays</p>
-          <p className="opacity-50 font-mono">Secure Ledger V1.1.0</p>
+          <p className="opacity-50 font-mono">Secure Ledger V2.0.0</p>
         </CardFooter>
       </Card>
     </div>

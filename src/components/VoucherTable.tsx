@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   Table,
@@ -8,10 +8,8 @@ import {
   TableCell,
   TableHead,
   TableHeader,
-  TableRow
+  TableRow,
 } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -34,339 +32,331 @@ import {
   Trash,
   AlertCircle,
   Download,
-  FileDown
+  FileDown,
+  Globe,
+  Clock
 } from "lucide-react";
 import * as XLSX from "xlsx-js-style";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  orderBy,
+  deleteDoc,
+  doc,
+} from "firebase/firestore";
+import { initializeFirebase } from "@/firebase";
+import { useAuth } from "@/firebase";
+import { useRole } from "@/lib/role-context";
+import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   bulkImportVouchers,
   createLedger,
   renameLedger,
   deleteLedger,
-  bulkDeleteVouchers
+  bulkDeleteVouchers,
 } from "@/lib/voucher-actions";
 import { convertAmountToWords } from "@/lib/amount-utils";
+import { DashboardStats } from "./DashboardStats";
 import { useToast } from "@/hooks/use-toast";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useFirebase, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, query, orderBy, where, getDocs } from "firebase/firestore";
-import { cn } from "@/lib/utils";
-import { useRole } from "@/lib/role-context";
-
-function parseExcelDate(val: any): string {
-  if (!val) return new Date().toISOString().split('T')[0];
-
-  if (typeof val === 'number') {
-    const date = new Date(Math.round((val - 25569) * 864e5));
-    return isNaN(date.getTime()) ? new Date().toISOString().split('T')[0] : date.toISOString().split('T')[0];
-  }
-
-  const str = String(val).trim();
-  const date = new Date(str);
-  if (!isNaN(date.getTime())) {
-    return date.toISOString().split('T')[0];
-  }
-
-  const parts = str.split(/[\/\-\.]/);
-  if (parts.length === 3) {
-    let d = parseInt(parts[0]);
-    let m = parseInt(parts[1]) - 1;
-    let y = parts[2].length === 2 ? 2000 + parseInt(parts[2]) : parseInt(parts[2]);
-    const manualDate = new Date(y, m, d);
-    if (!isNaN(manualDate.getTime())) return manualDate.toISOString().split('T')[0];
-  }
-
-  return new Date().toISOString().split('T')[0];
-}
 
 export function VoucherTable() {
-  const { firestore, user, isUserLoading } = useFirebase();
-  const { isAdmin, isEmployee } = useRole();
-  const [activeLedgerId, setActiveLedgerId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [vouchers, setVouchers] = useState<Voucher[]>([]);
+  const [vouchersLoading, setVouchersLoading] = useState(true);
+  const [ledgers, setLedgers] = useState<Ledger[]>([]);
+  const [ledgersLoading, setLedgersLoading] = useState(true);
+  const [activeLedgerId, setActiveLedgerId] = useState<string>("");
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [isAddingLedger, setIsAddingLedger] = useState(false);
   const [newLedgerName, setNewLedgerName] = useState("");
-  const [editingLedger, setEditingLedger] = useState<Ledger | null>(null);
-  const [editName, setEditName] = useState("");
+  const [showAddLedger, setShowAddLedger] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showDeleteLedgerConfirm, setShowDeleteLedgerConfirm] = useState(false);
+  const [pendingDeleteLedgerId, setPendingDeleteLedgerId] = useState<string | null>(null);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [pendingDeleteLedgerId, setPendingDeleteLedgerId] = useState<string | null>(null);
-  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  
+  const [isGlobalSearch, setIsGlobalSearch] = useState(false);
+  const [globalResults, setGlobalResults] = useState<Voucher[]>([]);
+  const [isGlobalSearching, setIsGlobalSearching] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { isAdmin, isEmployee } = useRole();
+  const user = useAuth().currentUser;
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const firestore = initializeFirebase().firestore;
 
+  // Fetch Ledgers
   useEffect(() => {
-    const interval = setInterval(() => {
-      setIsRefreshing(true);
-      setLastRefresh(new Date());
-      setTimeout(() => setIsRefreshing(false), 2000);
-    }, 10 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const ledgersQuery = useMemoFirebase(() => {
-    if (!firestore || !user || isUserLoading) return null;
-    return query(collection(firestore, "ledgers"), orderBy("createdAt", "asc"));
-  }, [firestore, user, isUserLoading]);
-
-  const { data: ledgersData, isLoading: ledgersLoading } = useCollection<Ledger>(ledgersQuery);
-  const ledgers = ledgersData || [];
-
-  useEffect(() => {
-    if (ledgers.length > 0 && !activeLedgerId) {
-      setActiveLedgerId(ledgers[0].id);
+    async function fetchLedgers() {
+      try {
+        const q = query(collection(firestore, "ledgers"), orderBy("createdAt", "asc"));
+        const snapshot = await getDocs(q);
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ledger));
+        setLedgers(data);
+        if (data.length > 0 && !activeLedgerId) {
+          setActiveLedgerId(data[0].id);
+        }
+      } catch (error) {
+        console.error("Error fetching ledgers:", error);
+      } finally {
+        setLedgersLoading(false);
+      }
     }
-  }, [ledgers, activeLedgerId]);
+    fetchLedgers();
+  }, [firestore, activeLedgerId]);
 
-  const vouchersQuery = useMemoFirebase(() => {
-    if (!firestore || !user || !activeLedgerId || isUserLoading || ledgersLoading) return null;
-    return query(
-      collection(firestore, "vouchers"),
-      where("ledgerId", "==", activeLedgerId)
-    );
-  }, [firestore, user, activeLedgerId, isUserLoading, ledgersLoading, lastRefresh]);
+  // Fetch Vouchers for Active Ledger
+  useEffect(() => {
+    if (!activeLedgerId || isGlobalSearch) return;
 
-  const { data: vouchersData, isLoading: vouchersLoading } = useCollection<Voucher>(vouchersQuery);
-  const vouchers = vouchersData || [];
+    async function fetchVouchers() {
+      setVouchersLoading(true);
+      try {
+        const q = query(
+          collection(firestore, "vouchers"),
+          where("ledgerId", "==", activeLedgerId),
+          orderBy("voucherNo", "desc")
+        );
+        const snapshot = await getDocs(q);
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Voucher));
+        setVouchers(data);
+        setLastRefresh(new Date());
+      } catch (error) {
+        console.error("Error fetching vouchers:", error);
+      } finally {
+        setVouchersLoading(false);
+      }
+    }
 
+    fetchVouchers();
+  }, [activeLedgerId, firestore, isGlobalSearch]);
+
+  // Reset selection on ledger or mode change
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [activeLedgerId]);
+  }, [activeLedgerId, isGlobalSearch]);
+
+  // Global Search Logic
+  useEffect(() => {
+    if (!isGlobalSearch || searchTerm.trim().length < 2) {
+      setGlobalResults([]);
+      return;
+    }
+
+    const handler = setTimeout(async () => {
+      setIsGlobalSearching(true);
+      try {
+        const q = query(
+          collection(firestore, "vouchers"),
+          orderBy("voucherNo", "desc")
+        );
+        const snapshot = await getDocs(q);
+        const all = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Voucher));
+        
+        const filtered = all.filter(v => 
+          v.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          v.recipient.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
+        ).slice(0, 50);
+        
+        setGlobalResults(filtered);
+      } catch (error) {
+        console.error("Global search error:", error);
+      } finally {
+        setIsGlobalSearching(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(handler);
+  }, [searchTerm, isGlobalSearch, firestore]);
 
   async function handleAddLedger() {
     if (!newLedgerName.trim() || !firestore || !user) return;
-    const ledger = await createLedger(newLedgerName, firestore, user!.uid);
-    if (ledger) {
-      setActiveLedgerId(ledger.id);
-      setNewLedgerName("");
-      setIsAddingLedger(false);
+    try {
+      const ledger = await createLedger(newLedgerName, firestore, user.uid);
+      if (ledger) {
+        setLedgers([...ledgers, ledger]);
+        setActiveLedgerId(ledger.id);
+        setNewLedgerName("");
+        setShowAddLedger(false);
+        toast({ title: "Ledger Created", description: `"${newLedgerName}" is now active.` });
+      }
+    } catch (error) {
+      toast({ variant: "destructive", title: "Error", description: "Could not create ledger." });
     }
-  }
-
-  async function handleRenameLedger() {
-    if (!editingLedger || !editName.trim() || !firestore || !user) return;
-    await renameLedger(editingLedger.id, editName, user!.uid);
-    setEditingLedger(null);
   }
 
   async function handleDeleteLedger(id: string) {
     if (!user) return;
-    await deleteLedger(id, user!.uid);
-    if (activeLedgerId === id) setActiveLedgerId("");
-    setPendingDeleteLedgerId(null);
+    try {
+      await deleteLedger(id, user.uid);
+      const updated = ledgers.filter(l => l.id !== id);
+      setLedgers(updated);
+      if (activeLedgerId === id) {
+        setActiveLedgerId(updated.length > 0 ? updated[0].id : "");
+      }
+      setPendingDeleteLedgerId(null);
+      toast({ title: "Ledger Deleted" });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Error", description: "Could not delete ledger." });
+    }
   }
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !firestore || !user) return;
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
 
     setIsImporting(true);
-    toast({ title: "Importing Ledger", description: "Processing data..." });
-
     const reader = new FileReader();
-    reader.onload = async (e) => {
+
+    reader.onload = async (evt) => {
       try {
-        const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: "binary" });
-
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: "binary" });
+        
         let totalImportedCount = 0;
-        const localExistingLedgers = new Map<string, string>();
-        ledgers.forEach(l => localExistingLedgers.set(l.name.trim().toLowerCase(), l.id));
+        let sheetsToProcess = wb.SheetNames;
 
-        for (const sheetName of workbook.SheetNames) {
-          const worksheet = workbook.Sheets[sheetName];
-          const rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: null }) as any[];
-
-          if (rawJson.length === 0) continue;
-
-          let targetLedgerId = localExistingLedgers.get(sheetName.trim().toLowerCase());
-
-          if (!targetLedgerId) {
-            const newLedger = await createLedger(sheetName.trim(), firestore, user!.uid);
+        for (const sheetName of sheetsToProcess) {
+          const ws = wb.Sheets[sheetName];
+          const rawData = XLSX.utils.sheet_to_json(ws);
+          
+          let ledgerId = "";
+          const existingLedger = ledgers.find(l => l.name.toLowerCase() === sheetName.toLowerCase());
+          
+          if (existingLedger) {
+            ledgerId = existingLedger.id;
+          } else {
+            const newLedger = await createLedger(sheetName, firestore, user.uid);
             if (newLedger) {
-              targetLedgerId = newLedger.id;
-              localExistingLedgers.set(sheetName.trim().toLowerCase(), targetLedgerId);
-              if (!activeLedgerId) setActiveLedgerId(targetLedgerId);
-            } else {
-              continue; // Skip sheet if ledger creation failed
+              ledgerId = newLedger.id;
+              setLedgers(prev => [...prev, newLedger]);
             }
           }
 
-          const vouchersForSheet: any[] = [];
+          if (!ledgerId) continue;
 
-          rawJson.forEach((row: any, index: number) => {
-            const recipient = row["Paid To"] || row["Recipient"];
-            const ro = Number(row["Amount (R.O.)"] || row["RO"] || 0);
-            const bz = Number(row["Amount (Bz)"] || row["Bz"] || 0);
-            const purpose = String(row["Being (Purpose)"] || row["Purpose"] || "").trim();
-            const vNoRaw = row["Voucher No"] || row["Sl No"] || row["No"] || row["#"];
+          // Fetch existing voucher numbers for this ledger to prevent duplicates
+          const q = query(collection(firestore, "vouchers"), where("ledgerId", "==", ledgerId));
+          const snap = await getDocs(q);
+          const existingNos = new Set(snap.docs.map(d => d.data().voucherNo));
 
-            if (!recipient && ro === 0 && bz === 0 && !purpose && !vNoRaw) return;
+          const vouchersForSheet = rawData.map((row: any) => ({
+            ledgerId,
+            voucherNo: String(row["Voucher No"] || row["Voucher No."] || ""),
+            date: String(row["Date"] || ""),
+            recipient: String(row["Paid To"] || row["Recipient"] || ""),
+            amountRO: Number(row["Amount (R.O.)"] || row["Amount RO"] || 0),
+            amountBz: Number(row["Amount (Bz)"] || row["Amount Bz"] || 0),
+            paymentMethod: (row["Payment Method"] || "cash").toLowerCase() as PaymentMethod,
+            bankName: String(row["Bank"] || ""),
+            refNo: String(row["Cheque/Ref No"] || row["Ref No"] || ""),
+            purpose: String(row["Being (Purpose)"] || row["Purpose"] || ""),
+            sumInWords: String(row["Sum in Words"] || ""),
+          })).filter(v => v.voucherNo && v.recipient);
 
-            const vNo = vNoRaw ? String(vNoRaw).replace(/\D/g, '').trim() : String(index + 1);
-            const isActuallyVoid = !recipient || (ro === 0 && bz === 0) || String(recipient).includes("VOID");
-            const totalAmount = ro + (bz / 1000);
-
-            let method: PaymentMethod = "Cash";
-            const methodStr = String(row["Payment Method"] || row["Method"] || "").toLowerCase();
-            if (methodStr.includes("cheque")) method = "Cheque";
-            if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
-
-            vouchersForSheet.push({
-              voucherNo: vNo,
-              date: parseExcelDate(row["Date"]),
-              recipient: recipient ? String(recipient) : "VOID / NO DATA",
-              amountRO: ro,
-              amountBz: bz,
-              sumInWords: isActuallyVoid ? "VOID" : convertAmountToWords(totalAmount),
-              paymentMethod: method,
-              bankName: String(row["Bank"] || ""),
-              refNo: String(row["Cheque/Ref No"] || row["Ref No"] || row["Ref"] || ""),
-              purpose: purpose || "N/A",
-              ledgerId: targetLedgerId as string,
-              isVoid: isActuallyVoid
-            });
-          });
-
-          // Fetch existing voucher numbers for this ledger
-          const existingQ = query(
-            collection(firestore, "vouchers"),
-            where("ledgerId", "==", targetLedgerId)
-          );
-          const existingSnap = await getDocs(existingQ);
-          const existingNos = new Set(existingSnap.docs.map(d => d.data().voucherNo));
-
-          // Filter out duplicates
           const newVouchers = vouchersForSheet.filter(v => !existingNos.has(v.voucherNo));
           const skippedCount = vouchersForSheet.length - newVouchers.length;
 
           if (newVouchers.length > 0) {
-            await bulkImportVouchers(newVouchers);
+            await bulkImportVouchers(newVouchers, user!.uid);
             totalImportedCount += newVouchers.length;
           }
 
           if (skippedCount > 0) {
-            toast({ 
-              title: "Duplicates Skipped", 
-              description: `${skippedCount} existing vouchers in '${sheetName}' were skipped.` 
-            });
+            console.log(`Skipped ${skippedCount} duplicate vouchers in sheet ${sheetName}`);
           }
         }
 
-        toast({ title: "Sync Complete", description: `Synchronized ${totalImportedCount} entries.` });
+        toast({ 
+          title: "Import Complete", 
+          description: `Successfully imported ${totalImportedCount} new vouchers.` 
+        });
+        
+        // Refresh current view
+        if (activeLedgerId) {
+          const q = query(collection(firestore, "vouchers"), where("ledgerId", "==", activeLedgerId), orderBy("voucherNo", "desc"));
+          const snapshot = await getDocs(q);
+          setVouchers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Voucher)));
+        }
       } catch (error) {
-        toast({ variant: "destructive", title: "Import Error", description: "Failed to process spreadsheet." });
+        console.error("Import error:", error);
+        toast({ variant: "destructive", title: "Import Failed", description: "Please check your Excel format." });
       } finally {
         setIsImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     };
+
     reader.readAsBinaryString(file);
   };
 
   const handleExportFullFile = async () => {
-    if (!firestore || ledgers.length === 0) return;
-
     setIsExporting(true);
-    toast({ title: "Compiling Workbook", description: "Preparing all ledger sheets..." });
-
     try {
-      const workbook = XLSX.utils.book_new();
-
-      const vRef = collection(firestore, "vouchers");
-      const snapshot = await getDocs(vRef);
-      const allVouchers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Voucher));
-
+      const wb = XLSX.utils.book_new();
+      
       for (const ledger of ledgers) {
-        const ledgerVouchers = allVouchers
-          .filter(v => v.ledgerId === ledger.id)
-          .sort((a, b) => {
-            const numA = parseInt(a.voucherNo) || 0;
-            const numB = parseInt(b.voucherNo) || 0;
-            if (numA !== numB) return numA - numB;
-            return new Date(a.date).getTime() - new Date(b.date).getTime();
-          });
+        const q = query(collection(firestore, "vouchers"), where("ledgerId", "==", ledger.id), orderBy("voucherNo", "asc"));
+        const snap = await getDocs(q);
+        const ledgerVouchers = snap.docs.map(d => d.data() as Voucher);
 
-        if (ledgerVouchers.length === 0) continue;
+        const data = ledgerVouchers.map(v => ({
+          "Voucher No": v.voucherNo,
+          "Date": v.date,
+          "Paid To": v.recipient,
+          "Amount (R.O.)": v.amountRO,
+          "Amount (Bz)": v.amountBz,
+          "Payment Method": v.paymentMethod,
+          "Bank": v.bankName || "",
+          "Cheque/Ref No": v.refNo || "",
+          "Being (Purpose)": v.purpose,
+          "Void": v.isVoid ? "YES" : "NO"
+        }));
 
-        const header = [
-          "Voucher No",
-          "Date",
-          "Paid To",
-          "Amount (R.O.)",
-          "Amount (Bz)",
-          "Payment Method",
-          "Being (Purpose)",
-          "Bank",
-          "Ref No"
-        ];
-
-        const rows = ledgerVouchers.map(v => [
-          v.voucherNo,
-          v.date,
-          v.recipient,
-          v.amountRO,
-          v.amountBz,
-          v.paymentMethod,
-          v.purpose,
-          v.bankName || "",
-          v.refNo || ""
-        ]);
-
-        const data = [header, ...rows];
-        const worksheet = XLSX.utils.aoa_to_sheet(data);
-
-        // Native Gridline Hiding - Removes ALL gridlines from the sheet background
-        worksheet["!views"] = [{ showGridLines: false }];
-
-        const wscols: any[] = [
-          { wch: 12 }, { wch: 12 }, { wch: 35 }, { wch: 14 },
-          { wch: 8 }, { wch: 18 }, { wch: 45 }, { wch: 20 }, { wch: 15 }
-        ];
-        worksheet['!cols'] = wscols;
-
-        const tableBorderStyle = {
-          top: { style: "thin", color: { rgb: "333333" } },
-          bottom: { style: "thin", color: { rgb: "333333" } },
-          left: { style: "thin", color: { rgb: "333333" } },
-          right: { style: "thin", color: { rgb: "333333" } }
-        };
-
-        for (let R = 0; R < data.length; R++) {
-          for (let C = 0; C < header.length; C++) {
+        const worksheet = XLSX.utils.json_to_sheet(data);
+        
+        // Styling...
+        const range = XLSX.utils.decode_range(worksheet['!ref'] || "A1");
+        for (let R = range.s.r; R <= range.e.r; ++R) {
+          for (let C = range.s.c; C <= range.e.c; ++C) {
             const addr = XLSX.utils.encode_cell({ r: R, c: C });
             if (!worksheet[addr]) continue;
-
-            let cellStyle: any = {
-              border: tableBorderStyle,
-              fill: { patternType: "solid", fgColor: { rgb: "FFFFFF" } },
-              font: { sz: 10 }
+            
+            const cellStyle: any = {
+              font: { sz: 10 },
+              border: {
+                top: { style: "thin", color: { rgb: "E2E8F0" } },
+                bottom: { style: "thin", color: { rgb: "E2E8F0" } },
+                left: { style: "thin", color: { rgb: "E2E8F0" } },
+                right: { style: "thin", color: { rgb: "E2E8F0" } }
+              }
             };
 
             if (R === 0) {
-              cellStyle.fill = { patternType: "solid", fgColor: { rgb: "E66E38" } };
+              cellStyle.fill = { patternType: "solid", fgColor: { rgb: "0F172A" } };
               cellStyle.font = { color: { rgb: "FFFFFF" }, bold: true, sz: 10 };
             } else {
               const v = ledgerVouchers[R - 1];
-              const isActuallyVoid = v.isVoid || v.recipient === "VOID / NO DATA" || String(v.recipient).includes("VOID") || (v.amountRO === 0 && v.amountBz === 0);
-
-              if (isActuallyVoid) {
-                // RED background and WHITE text for VOID rows in Excel
+              if (v?.isVoid) {
                 cellStyle.fill = { patternType: "solid", fgColor: { rgb: "EF4444" } };
                 cellStyle.font = { color: { rgb: "FFFFFF" }, bold: true, sz: 10 };
               }
             }
-
             worksheet[addr].s = cellStyle;
           }
         }
@@ -376,24 +366,23 @@ export function VoucherTable() {
       }
 
       const today = new Date().toISOString().split('T')[0];
-      XLSX.writeFile(workbook, `Tropical_Ledger_Complete_${today}.xlsx`);
-      toast({ title: "Export Ready", description: "Complete workbook downloaded." });
+      XLSX.writeFile(wb, `Tropical_Ledger_Complete_${today}.xlsx`);
+      toast({ title: "Export Ready" });
     } catch (error) {
-      console.error("Export error:", error);
-      toast({ variant: "destructive", title: "Export Error", description: "Could not generate full file." });
+      toast({ variant: "destructive", title: "Export Error" });
     } finally {
       setIsExporting(false);
     }
   };
 
   const handleExportSingleSheet = async () => {
-    if (vouchers.length === 0) return;
+    if (!activeLedgerId) return;
     setIsExporting(true);
     try {
-      const activeLedger = ledgers.find(l => l.id === activeLedgerId);
-      const sheetName = activeLedger ? activeLedger.name : "Vouchers";
-      
+      const ledger = ledgers.find(l => l.id === activeLedgerId);
+      const sheetName = ledger?.name || "Ledger";
       const wb = XLSX.utils.book_new();
+      
       const data = vouchers.map(v => ({
         "Voucher No": v.voucherNo,
         "Date": v.date,
@@ -417,26 +406,21 @@ export function VoucherTable() {
     }
   };
 
-  const filteredVouchers = vouchers
-    .filter((v) =>
-      v.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      v.recipient.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-    .sort((a, b) => {
-      const numA = parseInt(a.voucherNo) || 0;
-      const numB = parseInt(b.voucherNo) || 0;
-      if (numA !== numB) return numA - numB;
-      return new Date(a.date).getTime() - new Date(b.date).getTime();
-    });
-
-  const toggleSelectAll = () => {
-    if (selectedIds.size === filteredVouchers.length && filteredVouchers.length > 0) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(filteredVouchers.map(v => v.id)));
-    }
-  };
+  const filteredVouchers = useMemo(() => {
+    const list = isGlobalSearch ? globalResults : vouchers;
+    return list
+      .filter((v) =>
+        v.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        v.recipient.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+      .sort((a, b) => {
+        const numA = parseInt(a.voucherNo) || 0;
+        const numB = parseInt(b.voucherNo) || 0;
+        if (numA !== numB) return numB - numA; // Newest first
+        return new Date(b.date).getTime() - new Date(a.date).getTime();
+      });
+  }, [vouchers, globalResults, isGlobalSearch, searchTerm]);
 
   const toggleSelect = (id: string) => {
     const newSelected = new Set(selectedIds);
@@ -446,6 +430,14 @@ export function VoucherTable() {
       newSelected.add(id);
     }
     setSelectedIds(newSelected);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredVouchers.length && filteredVouchers.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredVouchers.map(v => v.id)));
+    }
   };
 
   const handleBulkDelete = async () => {
@@ -463,322 +455,324 @@ export function VoucherTable() {
     }
   };
 
-  const voucherNoCounts = vouchers.reduce((acc, v) => {
-    acc[v.voucherNo] = (acc[v.voucherNo] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+  const voucherNoCounts = useMemo(() => {
+    return vouchers.reduce((acc, v) => {
+      acc[v.voucherNo] = (acc[v.voucherNo] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+  }, [vouchers]);
+
+  const stats = useMemo(() => {
+    const totalRO = vouchers.reduce((acc, v) => acc + (v.isVoid ? 0 : v.amountRO), 0);
+    const totalBz = vouchers.reduce((acc, v) => acc + (v.isVoid ? 0 : v.amountBz), 0);
+    const normalizedRO = totalRO + Math.floor(totalBz / 1000);
+    const normalizedBz = totalBz % 1000;
+    const voidCount = vouchers.filter(v => v.isVoid || v.recipient === "VOID / NO DATA").length;
+
+    return {
+      ledgerCount: ledgers.length,
+      voucherCount: vouchers.length,
+      totalRO: normalizedRO,
+      totalBz: normalizedBz,
+      voidCount
+    };
+  }, [vouchers, ledgers]);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-200px)] min-h-[600px] border rounded-lg bg-card text-card-foreground shadow-xl overflow-hidden">
-      <div className="p-3 bg-muted/30 border-b flex flex-col sm:flex-row justify-between items-center gap-3 no-print">
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="relative w-full sm:w-80">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search current sheet..."
-              className="pl-9 h-9 text-xs bg-background"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              disabled={ledgers.length === 0}
-            />
-          </div>
-          {isAdmin && selectedIds.size > 0 && (
-            <Button
-              variant="destructive"
-              size="sm"
-              className="h-8 text-[11px]"
-              onClick={() => setShowBulkDeleteConfirm(true)}
-              disabled={isBulkDeleting}
-            >
-              <Trash className="w-3 h-3 mr-1" />
-              Delete {selectedIds.size}
-            </Button>
-          )}
-        </div>
-        <div className="flex gap-2 w-full sm:w-auto">
-          {isAdmin && (
-            <>
-              <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls" onChange={handleFileUpload} />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isImporting}
-                className="h-9 text-xs border-primary text-primary hover:bg-primary hover:text-primary-foreground"
-              >
-                {isImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
-                Import Data
-              </Button>
-            </>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportSingleSheet}
-            disabled={vouchers.length === 0 || isExporting}
-            className="h-9 text-xs border-emerald-600 text-emerald-600 hover:bg-emerald-600 hover:text-white"
-          >
-            {isExporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileDown className="w-3 h-3" />}
-            Export Current Sheet
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportFullFile}
-            disabled={ledgers.length === 0 || isExporting}
-            className="h-9 text-xs border-slate-600 text-slate-600 hover:bg-slate-600 hover:text-white"
-          >
-            {isExporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-            Export Full Workbook
-          </Button>
-          {(isAdmin || isEmployee) && (
-            <Link href="/vouchers/new">
-              <Button size="sm" className="h-9 text-xs bg-primary hover:bg-primary/90 text-primary-foreground">
-                <Plus className="w-3 h-3" />
-                New Voucher
-              </Button>
-            </Link>
-          )}
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-auto relative bg-background">
-        {(isImporting || vouchersLoading || ledgersLoading || isBulkDeleting || isExporting) && (
-          <div className="absolute top-0 left-0 right-0 z-20 h-0.5 bg-primary/20 overflow-hidden">
-            <div className="h-full bg-primary animate-[shimmer_1s_infinite_linear] bg-[length:200%_100%] bg-gradient-to-r from-primary/20 via-primary to-primary/20" />
-          </div>
-        )}
-
-        {ledgers.length === 0 && !ledgersLoading ? (
-          <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
-            <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
-            <h3 className="text-lg font-bold mb-1">Financial Database Empty</h3>
-            <p className="max-w-xs text-sm opacity-70">Import an Excel ledger or create a new sheet to begin management.</p>
-          </div>
-        ) : (
-          <Table className="border-collapse table-fixed w-full">
-            <TableHeader className="bg-slate-900 dark:bg-slate-950 sticky top-0 z-10">
-              <TableRow className="hover:bg-transparent border-none h-10">
-                {isAdmin && (
-                  <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-10 px-2 text-left no-print">
-                    <Checkbox
-                      checked={filteredVouchers.length > 0 && selectedIds.size === filteredVouchers.length}
-                      onCheckedChange={toggleSelectAll}
-                      className="border-white data-[state=checked]:bg-white data-[state=checked]:text-slate-900"
-                    />
-                  </TableHead>
-                )}
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2 text-left">Voucher No.</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2 text-left">Date</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-48 px-2 text-left">Recipient</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2 text-left">Amt (R.O.)</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-16 px-2 text-left">Bz</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-32 px-2 text-left">Method</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-64 px-2 text-left">Purpose</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2 text-left">Bank</TableHead>
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2 text-left">Ref No</TableHead>
-                <TableHead className="text-white font-bold text-[11px] w-24 px-2 text-left no-print">{(isAdmin || isEmployee) ? "Actions" : "View"}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredVouchers.length === 0 && !vouchersLoading ? (
-                <TableRow>
-                  <TableCell colSpan={isAdmin ? 11 : 10} className="h-64 text-center text-muted-foreground italic text-xs">
-                    No records found in this sheet.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredVouchers.map((v) => {
-                  const isActuallyVoid = v.isVoid || v.recipient === "VOID / NO DATA" || String(v.recipient).includes("VOID") || (v.amountRO === 0 && v.amountBz === 0);
-                  return (
-                    <TableRow
-                      key={v.id}
-                      className={cn(
-                        "border-none h-9 transition-colors",
-                        isActuallyVoid
-                          ? "bg-[#ef4444] hover:bg-[#dc2626] text-white font-bold"
-                          : "bg-background hover:bg-muted/10"
-                      )}
-                    >
-                      {isAdmin && (
-                        <TableCell className="border-r border-b border-border/50 px-2 py-1 text-left no-print">
-                          <Checkbox
-                            checked={selectedIds.has(v.id)}
-                            onCheckedChange={() => toggleSelect(v.id)}
-                            className={isActuallyVoid ? "border-white data-[state=checked]:bg-white data-[state=checked]:text-red-600" : ""}
-                          />
-                        </TableCell>
-                      )}
-                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] font-mono font-bold text-left">
-                        {v.voucherNo}
-                        {voucherNoCounts[v.voucherNo] > 1 && (
-                          <span className="ml-1 text-[9px] bg-yellow-400 text-yellow-900 font-bold px-1 rounded shadow-sm" title="Duplicate Voucher Number">
-                            DUP
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] text-left">{v.date}</TableCell>
-                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] font-semibold text-left">
-                        {v.recipient}
-                      </TableCell>
-                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-left font-black text-[11px]">{v.amountRO.toLocaleString()}</TableCell>
-                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-left font-mono text-[11px]">{v.amountBz.toString().padStart(3, '0')}</TableCell>
-                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[10px] uppercase font-semibold text-left">{v.paymentMethod}</TableCell>
-                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] truncate text-left" title={v.purpose}>{v.purpose}</TableCell>
-                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] truncate italic text-left">{v.bankName || "-"}</TableCell>
-                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] truncate font-mono text-left">{v.refNo || "-"}</TableCell>
-                      <TableCell className="border-b border-border/50 px-2 py-1 flex items-center justify-start gap-1 no-print">
-                        <Link href={`/vouchers/${v.id}`}>
-                          <Button variant="ghost" size="icon" className={cn("h-6 w-6", isActuallyVoid ? "text-white hover:bg-white/20" : "text-primary")}>
-                            <Eye className="w-3.5 h-3.5" />
-                          </Button>
-                        </Link>
-                        {(isAdmin || isEmployee) && (
-                          <Link href={`/vouchers/${v.id}/edit`}>
-                            <Button variant="ghost" size="icon" className={cn("h-6 w-6", isActuallyVoid ? "text-white/80 hover:bg-white/20" : "text-muted-foreground")}>
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </Button>
-                          </Link>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
+    <div className="space-y-6">
+      {!isGlobalSearch && <DashboardStats {...stats} />}
+      
+      <div className="flex flex-col h-[calc(100vh-200px)] min-h-[600px] border rounded-lg bg-card text-card-foreground shadow-xl overflow-hidden">
+        <div className="p-3 bg-muted/30 border-b flex flex-col sm:flex-row justify-between items-center gap-3 no-print">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="relative flex-1 group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+              <Input
+                placeholder={isGlobalSearch ? "Global search..." : "Search sheet..."}
+                className="pl-9 h-9 text-xs bg-background border-border/50 focus:border-primary transition-all pr-12"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              {isGlobalSearching && (
+                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-3 w-3 animate-spin text-muted-foreground" />
               )}
-            </TableBody>
-            <tfoot className="sticky bottom-0 bg-slate-900 text-white z-10 no-print">
-              <tr>
-                {isAdmin && <td className="px-2 py-1.5" />}
-                <td className="px-2 py-1.5 text-[11px] font-bold" colSpan={2}>TOTAL ({filteredVouchers.length} records)</td>
-                <td className="px-2 py-1.5 text-[11px]" />
-                <td className="px-2 py-1.5 text-[11px] font-black">
-                  {filteredVouchers.reduce((sum, v) => sum + (v.amountRO || 0), 0).toLocaleString()}
-                </td>
-                <td className="px-2 py-1.5 text-[11px] font-mono">
-                  {String(filteredVouchers.reduce((sum, v) => sum + (v.amountBz || 0), 0)).padStart(3, '0')}
-                </td>
-                <td colSpan={5} />
-              </tr>
-            </tfoot>
-          </Table>
-        )}
-      </div>
-
-      <div className="bg-muted/30 border-t flex items-center px-1 h-9 no-print">
-        <Tabs value={activeLedgerId} onValueChange={setActiveLedgerId} className="flex-1 overflow-x-auto">
-          <TabsList className="bg-transparent h-9 p-0 gap-0">
-            {ledgers.map((ledger) => (
-              <div key={ledger.id} className="flex items-center group">
-                <TabsTrigger
-                  value={ledger.id}
-                  className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:border-t-2 data-[state=active]:border-t-primary h-9 px-4 text-[11px] font-semibold rounded-none border-x border-border/50 -ml-[1px] transition-none"
-                >
-                  {ledger.name}
-                </TabsTrigger>
-                {isAdmin && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button className="h-9 w-5 hover:bg-muted flex items-center justify-center border-r border-border/50">
-                        <MoreHorizontal className="w-3 h-3 text-muted-foreground" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="text-xs">
-                      <DropdownMenuItem onClick={() => { setEditingLedger(ledger); setEditName(ledger.name); }}>
-                        <Edit2 className="w-3 h-3 mr-2" /> Rename
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive" onClick={() => setPendingDeleteLedgerId(ledger.id)}>
-                        <Trash2 className="w-3 h-3 mr-2" /> Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              </div>
-            ))}
-            {isAdmin && (
+            </div>
+            <Button
+              variant={isGlobalSearch ? "default" : "outline"}
+              size="sm"
+              className="h-9 px-3 gap-2"
+              onClick={() => {
+                setIsGlobalSearch(!isGlobalSearch);
+                setSearchTerm("");
+              }}
+            >
+              <Globe className={cn("w-3.5 h-3.5", isGlobalSearch && "animate-pulse")} />
+              <span className="hidden sm:inline">{isGlobalSearch ? "Global" : "All Sheets"}</span>
+            </Button>
+            {isAdmin && selectedIds.size > 0 && (
               <Button
-                variant="ghost"
+                variant="destructive"
                 size="sm"
-                onClick={() => setIsAddingLedger(true)}
-                className="h-9 px-3 hover:bg-muted rounded-none border-r border-border/50"
+                className="h-8 text-[11px]"
+                onClick={() => setShowBulkDeleteConfirm(true)}
+                disabled={isBulkDeleting}
               >
-                <Plus className="w-3.5 h-3.5 text-muted-foreground" />
+                <Trash className="w-3 h-3 mr-1" />
+                {selectedIds.size}
               </Button>
             )}
-          </TabsList>
-        </Tabs>
-        <div className="hidden sm:flex items-center gap-2 px-3 text-[10px] text-muted-foreground whitespace-nowrap">
-          {isRefreshing ? (
-            <span className="animate-pulse text-primary font-bold">Refreshing...</span>
-          ) : (
-            <span>Last updated: {lastRefresh.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+          </div>
+          <div className="flex gap-2 w-full sm:w-auto">
+            {isAdmin && (
+              <>
+                <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls" onChange={handleFileUpload} />
+                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isImporting} className="h-9 text-xs border-primary text-primary">
+                  {isImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
+                  Import
+                </Button>
+              </>
+            )}
+            <Button variant="outline" size="sm" onClick={handleExportSingleSheet} disabled={vouchers.length === 0 || isExporting} className="h-9 text-xs border-emerald-600 text-emerald-600">
+              <FileDown className="w-3 h-3" />
+              Export
+            </Button>
+            {(isAdmin || isEmployee) && (
+              <Link href="/vouchers/new">
+                <Button size="sm" className="h-9 text-xs bg-primary hover:bg-primary/90 text-primary-foreground">
+                  <Plus className="w-3 h-3" />
+                  New
+                </Button>
+              </Link>
+            )}
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto relative bg-background">
+          {(isImporting || vouchersLoading || ledgersLoading || isBulkDeleting || isExporting) && (
+            <div className="absolute top-0 left-0 right-0 z-20 h-0.5 bg-primary/20 overflow-hidden">
+              <div className="h-full bg-primary animate-pulse" />
+            </div>
           )}
+
+          {ledgers.length === 0 && !ledgersLoading ? (
+            <div className="h-full flex flex-col items-center justify-center p-8 text-center">
+              <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
+              <h3 className="text-lg font-bold">No Sheets Found</h3>
+              <p className="text-sm opacity-70">Import or create a new sheet to begin.</p>
+            </div>
+          ) : (
+            <div className="h-full flex flex-col">
+              {/* Desktop Table View */}
+              <div className="hidden md:block flex-1 overflow-auto">
+                <Table className="border-collapse table-fixed w-full min-w-[1200px]">
+                  <TableHeader className="bg-slate-900 sticky top-0 z-10">
+                    <TableRow className="hover:bg-transparent border-none">
+                      {isAdmin && (
+                        <TableHead className="text-white w-10 px-2 text-left">
+                          <Checkbox
+                            checked={filteredVouchers.length > 0 && selectedIds.size === filteredVouchers.length}
+                            onCheckedChange={toggleSelectAll}
+                            className="border-white"
+                          />
+                        </TableHead>
+                      )}
+                      <TableHead className="text-white w-24 px-2 text-[11px] font-bold">Voucher No.</TableHead>
+                      <TableHead className="text-white w-24 px-2 text-[11px] font-bold">Date</TableHead>
+                      <TableHead className="text-white w-48 px-2 text-[11px] font-bold">Recipient</TableHead>
+                      <TableHead className="text-white w-24 px-2 text-[11px] font-bold">Amt (R.O.)</TableHead>
+                      <TableHead className="text-white w-16 px-2 text-[11px] font-bold">Bz</TableHead>
+                      <TableHead className="text-white w-32 px-2 text-[11px] font-bold">Method</TableHead>
+                      <TableHead className="text-white w-64 px-2 text-[11px] font-bold">Purpose</TableHead>
+                      <TableHead className="text-white w-24 px-2 text-[11px] font-bold">Bank</TableHead>
+                      {isGlobalSearch && <TableHead className="text-white w-32 px-2 text-[11px] font-bold">Sheet</TableHead>}
+                      <TableHead className="text-white w-20 px-2 text-[11px] font-bold">View</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredVouchers.map((v) => {
+                      const isVoid = v.isVoid || v.recipient.includes("VOID");
+                      return (
+                        <TableRow 
+                          key={v.id} 
+                          className={cn("h-9 border-b", isVoid ? "bg-red-50 text-red-900" : "hover:bg-muted/30")}
+                          title={v.updatedAt ? `Edited: ${new Date(v.updatedAt).toLocaleString()}` : `Created: ${new Date(v.createdAt).toLocaleString()}`}
+                        >
+                          {isAdmin && (
+                            <TableCell className="px-2 py-1">
+                              <Checkbox checked={selectedIds.has(v.id)} onCheckedChange={() => toggleSelect(v.id)} />
+                            </TableCell>
+                          )}
+                          <TableCell className="px-2 py-1 text-[11px] font-bold">
+                            {v.voucherNo}
+                            {voucherNoCounts[v.voucherNo] > 1 && <span className="ml-1 bg-yellow-400 text-[9px] px-1 rounded">DUP</span>}
+                          </TableCell>
+                          <TableCell className="px-2 py-1 text-[11px]">{v.date}</TableCell>
+                          <TableCell className="px-2 py-1 text-[11px] font-semibold">{v.recipient}</TableCell>
+                          <TableCell className="px-2 py-1 text-[11px] font-bold">{v.amountRO.toLocaleString()}</TableCell>
+                          <TableCell className="px-2 py-1 text-[11px] font-mono">{v.amountBz.toString().padStart(3, '0')}</TableCell>
+                          <TableCell className="px-2 py-1 text-[10px] uppercase">{v.paymentMethod}</TableCell>
+                          <TableCell className="px-2 py-1 text-[11px] truncate" title={v.purpose}>{v.purpose}</TableCell>
+                          <TableCell className="px-2 py-1 text-[11px] italic">{v.bankName || "-"}</TableCell>
+                          {isGlobalSearch && (
+                            <TableCell className="px-2 py-1 text-[11px] font-bold text-primary">
+                              {ledgers.find(l => l.id === v.ledgerId)?.name || "—"}
+                            </TableCell>
+                          )}
+                          <TableCell className="px-2 py-1 flex gap-1">
+                            <Link href={`/vouchers/${v.id}`}>
+                              <Button variant="ghost" size="icon" className="h-6 w-6 text-primary"><Eye className="w-3.5 h-3.5" /></Button>
+                            </Link>
+                            {(isAdmin || isEmployee) && (
+                              <Link href={`/vouchers/${v.id}/edit`}>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground"><Edit2 className="w-3.5 h-3.5" /></Button>
+                              </Link>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Card View */}
+              <div className="block md:hidden flex-1 overflow-auto divide-y">
+                {filteredVouchers.map((v) => {
+                  const isVoid = v.isVoid || v.recipient.includes("VOID");
+                  return (
+                    <div key={v.id} className={cn("p-4 flex justify-between", isVoid ? "bg-red-50" : "hover:bg-muted/10")}>
+                      <div className="flex-1 min-w-0 pr-4">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-mono font-black text-xs">#{v.voucherNo}</span>
+                          <span className="text-[10px] text-muted-foreground">{v.date}</span>
+                        </div>
+                        <p className="text-sm font-bold truncate">{v.recipient}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{v.purpose}</p>
+                        {isGlobalSearch && (
+                          <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold uppercase mt-1 inline-block">
+                             {ledgers.find(l => l.id === v.ledgerId)?.name}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-black text-base">{v.amountRO.toLocaleString()}<span className="text-[10px] ml-0.5">RO</span></p>
+                        <p className="text-[10px] font-mono text-muted-foreground">{v.amountBz.toString().padStart(3, '0')} BZ</p>
+                        <div className="flex gap-2 mt-2 justify-end">
+                          <Link href={`/vouchers/${v.id}`}>
+                            <Button variant="outline" size="icon" className="h-8 w-8 rounded-full"><Eye className="w-4 h-4" /></Button>
+                          </Link>
+                          {(isAdmin || isEmployee) && (
+                            <Link href={`/vouchers/${v.id}/edit`}>
+                              <Button variant="outline" size="icon" className="h-8 w-8 rounded-full"><Edit2 className="w-4 h-4" /></Button>
+                            </Link>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer Tabs */}
+        <div className="bg-muted/30 border-t flex items-center px-1 h-9 no-print">
+          <Tabs value={activeLedgerId} onValueChange={setActiveLedgerId} className="flex-1 overflow-x-auto">
+            <TabsList className="bg-transparent h-9 p-0 gap-0">
+              {ledgers.map((ledger) => (
+                <div key={ledger.id} className="flex items-center group">
+                  <TabsTrigger
+                    value={ledger.id}
+                    className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:border-t-2 data-[state=active]:border-t-primary h-9 px-4 text-[11px] font-semibold rounded-none border-x border-border/50 -ml-[1px]"
+                  >
+                    {ledger.name}
+                  </TabsTrigger>
+                  {isAdmin && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-6 rounded-none opacity-0 group-hover:opacity-100 hover:text-red-600 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPendingDeleteLedgerId(ledger.id);
+                        setShowDeleteLedgerConfirm(true);
+                      }}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              {isAdmin && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 rounded-none border-x border-border/50 text-[11px] px-4 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                  onClick={() => setShowAddLedger(true)}
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  Sheet
+                </Button>
+              )}
+            </TabsList>
+          </Tabs>
+          <div className="flex items-center px-3 gap-2 border-l border-border/50 h-full">
+             <div className={cn("w-2 h-2 rounded-full", isRefreshing ? "bg-amber-500 animate-pulse" : "bg-emerald-500")} />
+             <span className="text-[10px] font-mono text-muted-foreground hidden sm:inline">
+               UP: {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+             </span>
+          </div>
         </div>
       </div>
 
-      <Dialog open={isAddingLedger} onOpenChange={setIsAddingLedger}>
-        <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader><DialogTitle>Create New Sheet</DialogTitle></DialogHeader>
+      {/* Dialogs */}
+      <Dialog open={showAddLedger} onOpenChange={setShowAddLedger}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Add New Ledger Sheet</DialogTitle>
+          </DialogHeader>
           <div className="py-4">
             <Input
-              placeholder="e.g. Sales Jan 2024"
+              placeholder="Enter sheet name (e.g., Petty Cash 2024)"
               value={newLedgerName}
               onChange={(e) => setNewLedgerName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddLedger()}
-              autoFocus
-              className="text-xs h-10"
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setIsAddingLedger(false)}>Cancel</Button>
-            <Button size="sm" onClick={handleAddLedger}>Create</Button>
+            <Button variant="outline" onClick={() => setShowAddLedger(false)}>Cancel</Button>
+            <Button onClick={handleAddLedger} disabled={!newLedgerName.trim()}>Create</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!editingLedger} onOpenChange={(open) => !open && setEditingLedger(null)}>
-        <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader><DialogTitle>Rename Sheet</DialogTitle></DialogHeader>
-          <div className="py-4">
-            <Input
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleRenameLedger()}
-              autoFocus
-              className="text-xs h-10"
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setEditingLedger(null)}>Cancel</Button>
-            <Button size="sm" onClick={handleRenameLedger}>Save Changes</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={!!pendingDeleteLedgerId} onOpenChange={(open) => !open && setPendingDeleteLedgerId(null)}>
-        <DialogContent className="sm:max-w-[425px]">
+      <Dialog open={showDeleteLedgerConfirm} onOpenChange={setShowDeleteLedgerConfirm}>
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Ledger Sheet?</DialogTitle>
             <DialogDescription>
-              This will permanently delete the sheet and all its vouchers. This cannot be undone.
+              This will permanently delete this sheet and all its vouchers. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setPendingDeleteLedgerId(null)}>Cancel</Button>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteLedgerConfirm(false)}>Cancel</Button>
             <Button variant="destructive" onClick={() => pendingDeleteLedgerId && handleDeleteLedger(pendingDeleteLedgerId)}>Delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Vouchers?</DialogTitle>
+            <DialogTitle>Delete {selectedIds.size} Vouchers?</DialogTitle>
             <DialogDescription>
-              You are about to delete {selectedIds.size} selected vouchers. This cannot be undone.
+              Are you sure you want to delete these records? This cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter>
             <Button variant="outline" onClick={() => setShowBulkDeleteConfirm(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleBulkDelete}>Delete</Button>
+            <Button variant="destructive" onClick={handleBulkDelete}>Delete All</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

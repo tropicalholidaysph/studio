@@ -130,6 +130,14 @@ export default function VoucherDetailPage() {
 
         <div className="no-print bg-muted/40 border-2 border-dashed border-primary/20 p-4 rounded-lg text-center text-sm text-muted-foreground backdrop-blur-sm">
           Below is a preview of the digital voucher. Click <strong>Print</strong> to generate a physical-style PDF copy.
+          {voucher.updatedAt && (
+            <p className="mt-2 text-[11px] text-muted-foreground/60">
+              Last edited: {new Date(voucher.updatedAt).toLocaleString()}
+            </p>
+          )}
+          <p className="text-[11px] text-muted-foreground/40">
+            Created: {new Date(voucher.createdAt).toLocaleString()}
+          </p>
         </div>
 
         <VoucherVisual voucher={voucher} />

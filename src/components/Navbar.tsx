@@ -5,7 +5,7 @@ import LinkNext from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, List, LogOut, Shield, ShieldCheck } from "lucide-react";
+import { PlusCircle, List, LogOut, Shield, ShieldCheck, History } from "lucide-react";
 import { useAuth } from "@/firebase";
 import { signOut } from "firebase/auth";
 import { ModeToggle } from "@/components/ModeToggle";
@@ -63,6 +63,14 @@ export function Navbar() {
                 <span className="hidden sm:inline">Vouchers</span>
               </Button>
             </LinkNext>
+            {isAdmin && (
+              <LinkNext href="/activity">
+                <Button variant="ghost" size="sm" className="flex items-center gap-2">
+                  <History className="w-4 h-4 text-primary" />
+                  <span className="hidden sm:inline">Activity</span>
+                </Button>
+              </LinkNext>
+            )}
             {(isAdmin || isEmployee) && (
               <LinkNext href="/vouchers/new">
                 <Button size="sm" className="bg-[#E66E38] hover:bg-[#E66E38]/90 text-white flex items-center gap-2">
