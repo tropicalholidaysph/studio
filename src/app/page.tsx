@@ -8,11 +8,13 @@ import { LayoutDashboard, PlusCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useUser } from "@/firebase";
+import { useRole } from "@/lib/role-context";
 
 export default function Dashboard() {
   const { user, isUserLoading } = useUser();
   const [isClient, setIsClient] = useState(false);
   const router = useRouter();
+  const { isAdmin, isEmployee } = useRole();
 
   useEffect(() => {
     setIsClient(true);
@@ -22,11 +24,11 @@ export default function Dashboard() {
     if (!isClient || isUserLoading) return;
 
     const localAuth = localStorage.getItem("auth");
-    
+
     // If we have no user and no local auth, redirect to login
     if (!user && localAuth !== "true") {
       router.push("/login");
-    } 
+    }
     // If localAuth is true but Firebase session is missing after loading, force re-login
     else if (!user && localAuth === "true") {
       localStorage.removeItem("auth");
@@ -59,12 +61,14 @@ export default function Dashboard() {
             </h1>
             <p className="text-muted-foreground mt-1">Real-time financial synchronization and voucher management</p>
           </div>
-          <Link href="/vouchers/new">
-            <Button className="bg-primary hover:bg-primary/90 shadow-md h-12 px-6">
-              <PlusCircle className="w-5 h-5 mr-2" />
-              New Voucher
-            </Button>
-          </Link>
+          {(isAdmin || isEmployee) && (
+            <Link href="/vouchers/new">
+              <Button className="bg-primary hover:bg-primary/90 shadow-md h-12 px-6">
+                <PlusCircle className="w-5 h-5 mr-2" />
+                New Voucher
+              </Button>
+            </Link>
+          )}
         </div>
 
         <VoucherTable />

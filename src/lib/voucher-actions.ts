@@ -2,14 +2,14 @@
 'use client';
 
 import { initializeFirebase } from "@/firebase";
-import { 
-  collection, 
+import {
+  collection,
   setDoc,
   doc,
-  getDocs, 
-  getDoc, 
-  query, 
-  orderBy, 
+  getDocs,
+  getDoc,
+  query,
+  orderBy,
   writeBatch,
   updateDoc,
   deleteDoc,
@@ -19,8 +19,18 @@ import {
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { Voucher, Ledger } from "./types";
+import { UserRole } from "./role-context";
 
 const getDb = () => initializeFirebase().firestore;
+
+async function getRole(uid: string): Promise<UserRole | null> {
+  const db = getDb();
+  const docSnap = await getDoc(doc(db, "user_roles", uid));
+  if (docSnap.exists()) {
+    return docSnap.data().role as UserRole;
+  }
+  return null;
+}
 
 const VOUCHERS_COLLECTION = "vouchers";
 const LEDGERS_COLLECTION = "ledgers";
@@ -34,14 +44,19 @@ export async function getLedgers(): Promise<Ledger[]> {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ledger));
 }
 
-export async function createLedger(name: string, db: Firestore): Promise<Ledger> {
+export async function createLedger(name: string, db: Firestore, uid: string): Promise<Ledger | null> {
+  const role = await getRole(uid);
+  if (role !== 'admin') {
+    throw new Error("Unauthorized: Only admins can create ledgers");
+  }
+
   const docRef = doc(collection(db, LEDGERS_COLLECTION));
   const ledger = {
     id: docRef.id,
     name,
     createdAt: new Date().toISOString()
   };
-  
+
   await setDoc(docRef, ledger).catch(err => {
     errorEmitter.emit('permission-error', new FirestorePermissionError({
       path: docRef.path,
@@ -49,11 +64,15 @@ export async function createLedger(name: string, db: Firestore): Promise<Ledger>
       requestResourceData: ledger
     }));
   });
-  
+
   return ledger;
 }
 
-export async function renameLedger(id: string, newName: string) {
+export async function renameLedger(id: string, newName: string, uid: string) {
+  const role = await getRole(uid);
+  if (role !== 'admin') {
+    throw new Error("Unauthorized");
+  }
   const db = getDb();
   const docRef = doc(db, LEDGERS_COLLECTION, id);
   updateDoc(docRef, { name: newName }).catch(err => {
@@ -65,7 +84,11 @@ export async function renameLedger(id: string, newName: string) {
   });
 }
 
-export async function deleteLedger(id: string) {
+export async function deleteLedger(id: string, uid: string) {
+  const role = await getRole(uid);
+  if (role !== 'admin') {
+    throw new Error("Unauthorized");
+  }
   const db = getDb();
   const docRef = doc(db, LEDGERS_COLLECTION, id);
   deleteDoc(docRef).catch(err => {
@@ -80,13 +103,13 @@ export async function deleteLedger(id: string) {
 
 export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'createdAt'>[]) {
   const db = getDb();
-  const chunkSize = 400; 
+  const chunkSize = 400;
   const now = new Date().toISOString();
 
   for (let i = 0; i < vouchers.length; i += chunkSize) {
     const chunk = vouchers.slice(i, i + chunkSize);
     const batch = writeBatch(db);
-    
+
     chunk.forEach((v) => {
       const docRef = doc(collection(db, VOUCHERS_COLLECTION));
       batch.set(docRef, {
@@ -94,33 +117,41 @@ export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'created
         createdAt: now,
       });
     });
-    
+
     await batch.commit();
   }
-  
+
   return { success: true, count: vouchers.length };
 }
 
-export async function bulkDeleteVouchers(ids: string[]) {
+export async function bulkDeleteVouchers(ids: string[], uid: string) {
+  const role = await getRole(uid);
+  if (role !== 'admin') {
+    throw new Error("Unauthorized");
+  }
   const db = getDb();
   const chunkSize = 400;
 
   for (let i = 0; i < ids.length; i += chunkSize) {
     const chunk = ids.slice(i, i + chunkSize);
     const batch = writeBatch(db);
-    
+
     chunk.forEach((id) => {
       const docRef = doc(db, VOUCHERS_COLLECTION, id);
       batch.delete(docRef);
     });
-    
+
     await batch.commit();
   }
-  
+
   return { success: true };
 }
 
-export function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>, db: Firestore) {
+export async function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>, db: Firestore, uid: string) {
+  const role = await getRole(uid);
+  if (role !== 'admin' && role !== 'employee') {
+    throw new Error("Unauthorized");
+  }
   const docRef = doc(collection(db, VOUCHERS_COLLECTION));
   const id = docRef.id;
   const data = {
@@ -139,9 +170,13 @@ export function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>, db: Fi
   return { success: true, id };
 }
 
-export async function updateVoucher(id: string, voucherData: Partial<Voucher>, db: Firestore) {
+export async function updateVoucher(id: string, voucherData: Partial<Voucher>, db: Firestore, uid: string) {
+  const role = await getRole(uid);
+  if (role !== 'admin' && role !== 'employee') {
+    throw new Error("Unauthorized");
+  }
   const docRef = doc(db, VOUCHERS_COLLECTION, id);
-  
+
   await updateDoc(docRef, voucherData).catch((error) => {
     errorEmitter.emit('permission-error', new FirestorePermissionError({
       path: docRef.path,

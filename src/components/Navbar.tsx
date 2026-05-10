@@ -5,17 +5,20 @@ import LinkNext from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, List, LogOut } from "lucide-react";
+import { PlusCircle, List, LogOut, Shield, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/firebase";
 import { signOut } from "firebase/auth";
 import { ModeToggle } from "@/components/ModeToggle";
+import { useRole } from "@/lib/role-context";
 
 export function Navbar() {
   const router = useRouter();
   const auth = useAuth();
+  const { role, isAdmin, isEmployee, setRole } = useRole();
 
   const handleLogout = async () => {
     localStorage.removeItem("auth");
+    setRole(null);
     await signOut(auth);
     router.push("/login");
   };
@@ -40,6 +43,15 @@ export function Navbar() {
                 Tropical Holidays
               </span>
             </LinkNext>
+            {/* Role Badge */}
+            <div className={`hidden sm:flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+              isAdmin 
+                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" 
+                : "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400"
+            }`}>
+              {isAdmin ? <ShieldCheck className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
+              {role || "—"}
+            </div>
           </div>
           
           <div className="flex items-center gap-2 sm:gap-4">
@@ -49,12 +61,14 @@ export function Navbar() {
                 <span className="hidden sm:inline">Vouchers</span>
               </Button>
             </LinkNext>
-            <LinkNext href="/vouchers/new">
-              <Button size="sm" className="bg-[#E66E38] hover:bg-[#E66E38]/90 text-white flex items-center gap-2">
-                <PlusCircle className="w-4 h-4" />
-                <span className="hidden sm:inline">New Voucher</span>
-              </Button>
-            </LinkNext>
+            {(isAdmin || isEmployee) && (
+              <LinkNext href="/vouchers/new">
+                <Button size="sm" className="bg-[#E66E38] hover:bg-[#E66E38]/90 text-white flex items-center gap-2">
+                  <PlusCircle className="w-4 h-4" />
+                  <span className="hidden sm:inline">New Voucher</span>
+                </Button>
+              </LinkNext>
+            )}
             <ModeToggle />
             <Button variant="outline" size="sm" onClick={handleLogout} className="border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground">
               <LogOut className="w-4 h-4" />

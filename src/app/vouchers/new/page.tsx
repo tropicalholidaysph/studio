@@ -4,19 +4,37 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
 import { VoucherForm } from "@/components/VoucherForm";
+import { useRole } from "@/lib/role-context";
+import { useToast } from "@/hooks/use-toast";
 
 export default function NewVoucherPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const router = useRouter();
-
-  useEffect(() => {
-    const auth = localStorage.getItem("auth");
-    if (auth !== "true") {
-      router.push("/login");
-    } else {
+    const { isAdmin, isEmployee, role } = useRole();
+    const { toast } = useToast();
+  
+    useEffect(() => {
+      const auth = localStorage.getItem("auth");
+      if (auth !== "true") {
+        router.push("/login");
+        return;
+      }
+      
+      // Only authorized roles can access this page
+      if (role && !isAdmin && !isEmployee) {
+      toast({
+        variant: "destructive",
+        title: "Access Denied",
+        description: "You don't have permission to create vouchers.",
+      });
+      router.push("/");
+      return;
+    }
+    
+    if (role) {
       setIsAuthenticated(true);
     }
-  }, [router]);
+  }, [router, isAdmin, role, toast]);
 
   if (!isAuthenticated) return null;
 

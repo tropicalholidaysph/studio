@@ -9,12 +9,14 @@ import { Voucher } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Printer, ArrowLeft, Loader2, Edit2 } from "lucide-react";
 import Link from "next/link";
+import { useRole } from "@/lib/role-context";
 
 export default function VoucherDetailPage() {
   const { id } = useParams();
   const [voucher, setVoucher] = useState<Voucher | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const { isAdmin, isEmployee } = useRole();
 
   useEffect(() => {
     const auth = localStorage.getItem("auth");
@@ -68,12 +70,14 @@ export default function VoucherDetailPage() {
             </Button>
           </Link>
           <div className="flex gap-2">
-            <Link href={`/vouchers/${voucher.id}/edit`}>
-              <Button variant="outline" className="flex items-center gap-2">
-                <Edit2 className="w-4 h-4" />
-                Edit Record
-              </Button>
-            </Link>
+            {(isAdmin || isEmployee) && (
+              <Link href={`/vouchers/${voucher.id}/edit`}>
+                <Button variant="outline" className="flex items-center gap-2">
+                  <Edit2 className="w-4 h-4" />
+                  Edit Record
+                </Button>
+              </Link>
+            )}
             <Button 
               onClick={handlePrint}
               className="bg-accent hover:bg-accent/90 text-white flex items-center gap-2 shadow-md"

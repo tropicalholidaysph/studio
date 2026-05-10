@@ -9,9 +9,17 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/firebase";
 import { signInAnonymously } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { Loader2, ShieldCheck, Shield } from "lucide-react";
 import { ModeToggle } from "@/components/ModeToggle";
+import { useRole, UserRole } from "@/lib/role-context";
+import { initializeFirebase } from "@/firebase";
+
+const ACCESS_CODES: Record<string, { role: UserRole; label: string }> = {
+  "tropicalholidays": { role: "admin", label: "Administrator" },
+  "tholidays": { role: "employee", label: "Employee" },
+};
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
@@ -19,17 +27,30 @@ export default function LoginPage() {
   const router = useRouter();
   const auth = useAuth();
   const { toast } = useToast();
+  const { setRole } = useRole();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === "tropicalholidays") {
+    const matched = ACCESS_CODES[password.trim().toLowerCase()];
+
+    if (matched) {
       setIsLoading(true);
       try {
-        await signInAnonymously(auth);
+        const userCredential = await signInAnonymously(auth);
+        const user = userCredential.user;
+        const { firestore } = initializeFirebase();
+
+        // Save role to Firestore for security rules enforcement
+        await setDoc(doc(firestore, "user_roles", user.uid), {
+          role: matched.role,
+          updatedAt: new Date().toISOString()
+        });
+
         localStorage.setItem("auth", "true");
+        setRole(matched.role);
         toast({
           title: "Access Granted",
-          description: "Connected to secure ledger.",
+          description: `Logged in as ${matched.label}. Connected to secure ledger.`,
         });
         router.push("/");
       } catch (error) {
@@ -56,13 +77,13 @@ export default function LoginPage() {
       <div className="absolute top-4 right-4">
         <ModeToggle />
       </div>
-      
+
       <Card className="w-full max-w-md shadow-2xl border-t-4 border-t-primary bg-card">
         <CardHeader className="text-center">
           <div className="mx-auto w-24 h-24 relative mb-4">
-            <Image 
-              src="/logo.png" 
-              alt="Tropical Holidays Logo" 
+            <Image
+              src="/logo.png"
+              alt="Tropical Holidays Logo"
               fill
               className="object-contain"
               priority
@@ -79,9 +100,9 @@ export default function LoginPage() {
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="password">Security Key</Label>
-              <Input 
-                id="password" 
-                type="password" 
+              <Input
+                id="password"
+                type="password"
                 placeholder="Enter access code"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -94,6 +115,10 @@ export default function LoginPage() {
               {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying...</> : "Enter System"}
             </Button>
           </form>
+          <div className="mt-4 flex items-center justify-center gap-2 text-[10px] text-muted-foreground/60">
+            <Shield className="w-3 h-3" />
+            <span>Different access codes provide different permission levels</span>
+          </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-2 justify-center text-xs text-muted-foreground border-t pt-4">
           <p>&copy; {new Date().getFullYear()} Tropical Holidays</p>

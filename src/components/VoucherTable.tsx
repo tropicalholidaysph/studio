@@ -2,62 +2,63 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Voucher, PaymentMethod, Ledger } from "@/lib/types";
-import { 
-  Search, 
-  FileUp, 
-  Eye, 
-  Loader2, 
-  Plus, 
-  MoreHorizontal, 
-  Edit2, 
+import {
+  Search,
+  FileUp,
+  Eye,
+  Loader2,
+  Plus,
+  MoreHorizontal,
+  Edit2,
   Trash2,
   Trash,
   AlertCircle,
   Download
 } from "lucide-react";
 import * as XLSX from "xlsx-js-style";
-import { 
-  bulkImportVouchers, 
-  createLedger, 
-  renameLedger, 
+import {
+  bulkImportVouchers,
+  createLedger,
+  renameLedger,
   deleteLedger,
   bulkDeleteVouchers
 } from "@/lib/voucher-actions";
 import { convertAmountToWords } from "@/lib/amount-utils";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFirebase, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, orderBy, where, getDocs } from "firebase/firestore";
 import { cn } from "@/lib/utils";
+import { useRole } from "@/lib/role-context";
 
 function parseExcelDate(val: any): string {
   if (!val) return new Date().toISOString().split('T')[0];
-  
+
   if (typeof val === 'number') {
     const date = new Date(Math.round((val - 25569) * 864e5));
     return isNaN(date.getTime()) ? new Date().toISOString().split('T')[0] : date.toISOString().split('T')[0];
@@ -72,7 +73,7 @@ function parseExcelDate(val: any): string {
   const parts = str.split(/[\/\-\.]/);
   if (parts.length === 3) {
     let d = parseInt(parts[0]);
-    let m = parseInt(parts[1]) - 1; 
+    let m = parseInt(parts[1]) - 1;
     let y = parts[2].length === 2 ? 2000 + parseInt(parts[2]) : parseInt(parts[2]);
     const manualDate = new Date(y, m, d);
     if (!isNaN(manualDate.getTime())) return manualDate.toISOString().split('T')[0];
@@ -83,6 +84,7 @@ function parseExcelDate(val: any): string {
 
 export function VoucherTable() {
   const { firestore, user, isUserLoading } = useFirebase();
+  const { isAdmin, isEmployee } = useRole();
   const [activeLedgerId, setActiveLedgerId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [isImporting, setIsImporting] = useState(false);
@@ -93,7 +95,7 @@ export function VoucherTable() {
   const [editName, setEditName] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -151,13 +153,13 @@ export function VoucherTable() {
 
     setIsImporting(true);
     toast({ title: "Importing Ledger", description: "Processing data..." });
-    
+
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
         const data = e.target?.result;
         const workbook = XLSX.read(data, { type: "binary" });
-        
+
         let totalImportedCount = 0;
         const localExistingLedgers = new Map<string, string>();
         ledgers.forEach(l => localExistingLedgers.set(l.name.trim().toLowerCase(), l.id));
@@ -165,11 +167,11 @@ export function VoucherTable() {
         for (const sheetName of workbook.SheetNames) {
           const worksheet = workbook.Sheets[sheetName];
           const rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: null }) as any[];
-          
+
           if (rawJson.length === 0) continue;
 
           let targetLedgerId = localExistingLedgers.get(sheetName.trim().toLowerCase());
-          
+
           if (!targetLedgerId) {
             const newLedger = await createLedger(sheetName.trim(), firestore);
             targetLedgerId = newLedger.id;
@@ -191,14 +193,14 @@ export function VoucherTable() {
             const vNo = vNoRaw ? String(vNoRaw).replace(/\D/g, '').trim() : String(index + 1);
             const isActuallyVoid = !recipient || (ro === 0 && bz === 0) || String(recipient).includes("VOID");
             const totalAmount = ro + (bz / 1000);
-            
+
             let method: PaymentMethod = "Cash";
             const methodStr = String(row["Payment Method"] || row["Method"] || "").toLowerCase();
             if (methodStr.includes("cheque")) method = "Cheque";
             if (methodStr.includes("transfer") || methodStr.includes("bank")) method = "Bank Transfer";
 
             vouchersForSheet.push({
-              voucherNo: vNo, 
+              voucherNo: vNo,
               date: parseExcelDate(row["Date"]),
               recipient: recipient ? String(recipient) : "VOID / NO DATA",
               amountRO: ro,
@@ -232,13 +234,13 @@ export function VoucherTable() {
 
   const handleExportFullFile = async () => {
     if (!firestore || ledgers.length === 0) return;
-    
+
     setIsExporting(true);
     toast({ title: "Compiling Workbook", description: "Preparing all ledger sheets..." });
-    
+
     try {
       const workbook = XLSX.utils.book_new();
-      
+
       const vRef = collection(firestore, "vouchers");
       const snapshot = await getDocs(vRef);
       const allVouchers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Voucher));
@@ -256,17 +258,17 @@ export function VoucherTable() {
         if (ledgerVouchers.length === 0) continue;
 
         const header = [
-          "Voucher No", 
-          "Date", 
-          "Paid To", 
-          "Amount (R.O.)", 
-          "Amount (Bz)", 
-          "Payment Method", 
-          "Being (Purpose)", 
-          "Bank", 
+          "Voucher No",
+          "Date",
+          "Paid To",
+          "Amount (R.O.)",
+          "Amount (Bz)",
+          "Payment Method",
+          "Being (Purpose)",
+          "Bank",
           "Ref No"
         ];
-        
+
         const rows = ledgerVouchers.map(v => [
           v.voucherNo,
           v.date,
@@ -286,7 +288,7 @@ export function VoucherTable() {
         worksheet["!views"] = [{ showGridLines: false }];
 
         const wscols: any[] = [
-          { wch: 12 }, { wch: 12 }, { wch: 35 }, { wch: 14 }, 
+          { wch: 12 }, { wch: 12 }, { wch: 35 }, { wch: 14 },
           { wch: 8 }, { wch: 18 }, { wch: 45 }, { wch: 20 }, { wch: 15 }
         ];
         worksheet['!cols'] = wscols;
@@ -315,20 +317,20 @@ export function VoucherTable() {
             } else {
               const v = ledgerVouchers[R - 1];
               const isActuallyVoid = v.isVoid || v.recipient === "VOID / NO DATA" || String(v.recipient).includes("VOID") || (v.amountRO === 0 && v.amountBz === 0);
-              
+
               if (isActuallyVoid) {
                 // RED background and WHITE text for VOID rows in Excel
                 cellStyle.fill = { patternType: "solid", fgColor: { rgb: "EF4444" } };
                 cellStyle.font = { color: { rgb: "FFFFFF" }, bold: true, sz: 10 };
               }
             }
-            
+
             worksheet[addr].s = cellStyle;
           }
         }
 
         const sheetName = ledger.name.substring(0, 31).replace(/[\[\]\*\?\/\\\:]/g, '');
-        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName || `Sheet_${ledger.id.substring(0,5)}`);
+        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName || `Sheet_${ledger.id.substring(0, 5)}`);
       }
 
       const today = new Date().toISOString().split('T')[0];
@@ -343,7 +345,7 @@ export function VoucherTable() {
   };
 
   const filteredVouchers = vouchers
-    .filter((v) => 
+    .filter((v) =>
       v.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
       v.recipient.toLowerCase().includes(searchTerm.toLowerCase()) ||
       v.purpose.toLowerCase().includes(searchTerm.toLowerCase())
@@ -393,18 +395,18 @@ export function VoucherTable() {
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input 
-              placeholder="Search current sheet..." 
+            <Input
+              placeholder="Search current sheet..."
               className="pl-9 h-9 text-xs bg-background"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               disabled={ledgers.length === 0}
             />
           </div>
-          {selectedIds.size > 0 && (
-            <Button 
-              variant="destructive" 
-              size="sm" 
+          {isAdmin && selectedIds.size > 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
               className="h-8 text-[11px]"
               onClick={handleBulkDelete}
               disabled={isBulkDeleting}
@@ -415,19 +417,23 @@ export function VoucherTable() {
           )}
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
-          <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls" onChange={handleFileUpload} />
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isImporting}
-            className="h-9 text-xs border-primary text-primary hover:bg-primary hover:text-primary-foreground"
-          >
-            {isImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
-            Import Data
-          </Button>
-          <Button 
-            variant="outline" 
+          {isAdmin && (
+            <>
+              <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls" onChange={handleFileUpload} />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isImporting}
+                className="h-9 text-xs border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+              >
+                {isImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
+                Import Data
+              </Button>
+            </>
+          )}
+          <Button
+            variant="outline"
             size="sm"
             onClick={handleExportFullFile}
             disabled={ledgers.length === 0 || isExporting}
@@ -436,12 +442,14 @@ export function VoucherTable() {
             {isExporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
             Export Full Workbook
           </Button>
-          <Link href="/vouchers/new">
-            <Button size="sm" className="h-9 text-xs bg-primary hover:bg-primary/90 text-primary-foreground">
-              <Plus className="w-3 h-3" />
-              New Voucher
-            </Button>
-          </Link>
+          {(isAdmin || isEmployee) && (
+            <Link href="/vouchers/new">
+              <Button size="sm" className="h-9 text-xs bg-primary hover:bg-primary/90 text-primary-foreground">
+                <Plus className="w-3 h-3" />
+                New Voucher
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -451,7 +459,7 @@ export function VoucherTable() {
             <div className="h-full bg-primary animate-[shimmer_1s_infinite_linear] bg-[length:200%_100%] bg-gradient-to-r from-primary/20 via-primary to-primary/20" />
           </div>
         )}
-        
+
         {ledgers.length === 0 && !ledgersLoading ? (
           <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
             <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
@@ -462,13 +470,15 @@ export function VoucherTable() {
           <Table className="border-collapse table-fixed w-full">
             <TableHeader className="bg-slate-900 dark:bg-slate-950 sticky top-0 z-10">
               <TableRow className="hover:bg-transparent border-none h-10">
-                <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-10 px-2 text-left no-print">
-                  <Checkbox 
-                    checked={filteredVouchers.length > 0 && selectedIds.size === filteredVouchers.length}
-                    onCheckedChange={toggleSelectAll}
-                    className="border-white data-[state=checked]:bg-white data-[state=checked]:text-slate-900"
-                  />
-                </TableHead>
+                {isAdmin && (
+                  <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-10 px-2 text-left no-print">
+                    <Checkbox
+                      checked={filteredVouchers.length > 0 && selectedIds.size === filteredVouchers.length}
+                      onCheckedChange={toggleSelectAll}
+                      className="border-white data-[state=checked]:bg-white data-[state=checked]:text-slate-900"
+                    />
+                  </TableHead>
+                )}
                 <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2 text-left">Voucher No.</TableHead>
                 <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2 text-left">Date</TableHead>
                 <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-48 px-2 text-left">Recipient</TableHead>
@@ -478,13 +488,13 @@ export function VoucherTable() {
                 <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-64 px-2 text-left">Purpose</TableHead>
                 <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2 text-left">Bank</TableHead>
                 <TableHead className="text-white font-bold text-[11px] border-r border-slate-700/50 w-24 px-2 text-left">Ref No</TableHead>
-                <TableHead className="text-white font-bold text-[11px] w-24 px-2 text-left no-print">Actions</TableHead>
+                <TableHead className="text-white font-bold text-[11px] w-24 px-2 text-left no-print">{(isAdmin || isEmployee) ? "Actions" : "View"}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredVouchers.length === 0 && !vouchersLoading ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="h-64 text-center text-muted-foreground italic text-xs">
+                  <TableCell colSpan={isAdmin ? 11 : 10} className="h-64 text-center text-muted-foreground italic text-xs">
                     No records found in this sheet.
                   </TableCell>
                 </TableRow>
@@ -492,22 +502,24 @@ export function VoucherTable() {
                 filteredVouchers.map((v) => {
                   const isActuallyVoid = v.isVoid || v.recipient === "VOID / NO DATA" || String(v.recipient).includes("VOID") || (v.amountRO === 0 && v.amountBz === 0);
                   return (
-                    <TableRow 
-                      key={v.id} 
+                    <TableRow
+                      key={v.id}
                       className={cn(
                         "border-none h-9 transition-colors",
-                        isActuallyVoid 
-                          ? "bg-[#ef4444] hover:bg-[#dc2626] text-white font-bold" 
+                        isActuallyVoid
+                          ? "bg-[#ef4444] hover:bg-[#dc2626] text-white font-bold"
                           : "bg-background hover:bg-muted/10"
                       )}
                     >
-                      <TableCell className="border-r border-b border-border/50 px-2 py-1 text-left no-print">
-                        <Checkbox 
-                          checked={selectedIds.has(v.id)}
-                          onCheckedChange={() => toggleSelect(v.id)}
-                          className={isActuallyVoid ? "border-white data-[state=checked]:bg-white data-[state=checked]:text-red-600" : ""}
-                        />
-                      </TableCell>
+                      {isAdmin && (
+                        <TableCell className="border-r border-b border-border/50 px-2 py-1 text-left no-print">
+                          <Checkbox
+                            checked={selectedIds.has(v.id)}
+                            onCheckedChange={() => toggleSelect(v.id)}
+                            className={isActuallyVoid ? "border-white data-[state=checked]:bg-white data-[state=checked]:text-red-600" : ""}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] font-mono font-bold text-left">
                         {v.voucherNo}
                       </TableCell>
@@ -527,11 +539,13 @@ export function VoucherTable() {
                             <Eye className="w-3.5 h-3.5" />
                           </Button>
                         </Link>
-                        <Link href={`/vouchers/${v.id}/edit`}>
-                          <Button variant="ghost" size="icon" className={cn("h-6 w-6", isActuallyVoid ? "text-white/80 hover:bg-white/20" : "text-muted-foreground")}>
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </Link>
+                        {(isAdmin || isEmployee) && (
+                          <Link href={`/vouchers/${v.id}/edit`}>
+                            <Button variant="ghost" size="icon" className={cn("h-6 w-6", isActuallyVoid ? "text-white/80 hover:bg-white/20" : "text-muted-foreground")}>
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </Link>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
@@ -547,37 +561,41 @@ export function VoucherTable() {
           <TabsList className="bg-transparent h-9 p-0 gap-0">
             {ledgers.map((ledger) => (
               <div key={ledger.id} className="flex items-center group">
-                <TabsTrigger 
+                <TabsTrigger
                   value={ledger.id}
                   className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:border-t-2 data-[state=active]:border-t-primary h-9 px-4 text-[11px] font-semibold rounded-none border-x border-border/50 -ml-[1px] transition-none"
                 >
                   {ledger.name}
                 </TabsTrigger>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button className="h-9 w-5 hover:bg-muted flex items-center justify-center border-r border-border/50">
-                      <MoreHorizontal className="w-3 h-3 text-muted-foreground" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="text-xs">
-                    <DropdownMenuItem onClick={() => { setEditingLedger(ledger); setEditName(ledger.name); }}>
-                      <Edit2 className="w-3 h-3 mr-2" /> Rename
-                    </DropdownMenuItem>
-                    <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteLedger(ledger.id)}>
-                      <Trash2 className="w-3 h-3 mr-2" /> Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {isAdmin && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="h-9 w-5 hover:bg-muted flex items-center justify-center border-r border-border/50">
+                        <MoreHorizontal className="w-3 h-3 text-muted-foreground" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="text-xs">
+                      <DropdownMenuItem onClick={() => { setEditingLedger(ledger); setEditName(ledger.name); }}>
+                        <Edit2 className="w-3 h-3 mr-2" /> Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteLedger(ledger.id)}>
+                        <Trash2 className="w-3 h-3 mr-2" /> Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
             ))}
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => setIsAddingLedger(true)}
-              className="h-9 px-3 hover:bg-muted rounded-none border-r border-border/50"
-            >
-              <Plus className="w-3.5 h-3.5 text-muted-foreground" />
-            </Button>
+            {isAdmin && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsAddingLedger(true)}
+                className="h-9 px-3 hover:bg-muted rounded-none border-r border-border/50"
+              >
+                <Plus className="w-3.5 h-3.5 text-muted-foreground" />
+              </Button>
+            )}
           </TabsList>
         </Tabs>
       </div>
@@ -586,9 +604,9 @@ export function VoucherTable() {
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader><DialogTitle>Create New Sheet</DialogTitle></DialogHeader>
           <div className="py-4">
-            <Input 
-              placeholder="e.g. Sales Jan 2024" 
-              value={newLedgerName} 
+            <Input
+              placeholder="e.g. Sales Jan 2024"
+              value={newLedgerName}
               onChange={(e) => setNewLedgerName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddLedger()}
               autoFocus
@@ -606,9 +624,9 @@ export function VoucherTable() {
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader><DialogTitle>Rename Sheet</DialogTitle></DialogHeader>
           <div className="py-4">
-            <Input 
-              value={editName} 
-              onChange={(e) => setEditName(e.target.value)} 
+            <Input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleRenameLedger()}
               autoFocus
               className="text-xs h-10"

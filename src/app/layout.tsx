@@ -4,6 +4,7 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { FirebaseClientProvider } from '@/firebase/client-provider';
 import { ThemeProvider } from '@/components/theme-provider';
+import { RoleProvider } from '@/lib/role-context';
 
 export const metadata: Metadata = {
   title: 'Tropical Holidays - Voucher Management System',
@@ -30,8 +31,10 @@ export default function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-            {children}
-            <Toaster />
+            <RoleProvider>
+              {children}
+              <Toaster />
+            </RoleProvider>
           </ThemeProvider>
         </FirebaseClientProvider>
       </body>
