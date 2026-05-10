@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -17,17 +18,28 @@ import { useRole, UserRole } from "@/lib/role-context";
 import { initializeFirebase } from "@/firebase";
 
 const ACCESS_CODES: Record<string, { role: UserRole; label: string }> = {
-  "tropicalholidays": { role: "admin", label: "Administrator" },
-  "tholidays": { role: "employee", label: "Employee" },
+  [process.env.NEXT_PUBLIC_ADMIN_KEY!]: { role: "admin", label: "Administrator" },
+  [process.env.NEXT_PUBLIC_EMPLOYEE_KEY!]: { role: "employee", label: "Employee" },
 };
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const auth = useAuth();
   const { toast } = useToast();
   const { setRole } = useRole();
+
+  useEffect(() => {
+    if (searchParams.get("reason") === "timeout") {
+      toast({
+        title: "Session Expired",
+        description: "Your session has timed out. Please log in again.",
+        variant: "destructive",
+      });
+    }
+  }, [searchParams, toast]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

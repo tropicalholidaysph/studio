@@ -24,12 +24,12 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { createVoucher, updateVoucher, getLedgers } from "@/lib/voucher-actions";
+import { createVoucher, updateVoucher, getLedgers, getNextVoucherNumber } from "@/lib/voucher-actions";
 import { convertAmountToWords } from "@/lib/amount-utils";
 import { Save, Loader2, FileText, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Ledger, Voucher } from "@/lib/types";
-import { useFirestore, useAuth, useUser } from "@/firebase";
+import { useFirebase, useFirestore } from "@/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import Link from "next/link";
 
@@ -57,8 +57,7 @@ export function VoucherForm({ voucher }: VoucherFormProps) {
   const router = useRouter();
   const { toast } = useToast();
   const db = useFirestore();
-  const auth = useAuth();
-  const { user } = useUser();
+  const { user } = useFirebase();
 
   const isEditMode = !!voucher;
 
@@ -93,22 +92,13 @@ export function VoucherForm({ voucher }: VoucherFormProps) {
   }, [form, selectedLedgerId, isEditMode]);
 
   useEffect(() => {
-    async function calculateNextNo() {
-      if (!selectedLedgerId || !db || isEditMode) return;
-
-      const q = query(collection(db, "vouchers"), where("ledgerId", "==", selectedLedgerId));
-      const snapshot = await getDocs(q);
-      const existingVouchers = snapshot.docs.map(doc => doc.data() as Voucher);
-      
-      const numbers = existingVouchers
-        .map(v => parseInt(v.voucherNo))
-        .filter(n => !isNaN(n));
-      
-      const nextNo = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
+    async function fetchNextNumber() {
+      if (!selectedLedgerId || isEditMode) return;
+      const nextNo = await getNextVoucherNumber(selectedLedgerId);
       form.setValue("voucherNo", String(nextNo));
     }
-    calculateNextNo();
-  }, [selectedLedgerId, db, form, isEditMode]);
+    fetchNextNumber();
+  }, [selectedLedgerId, isEditMode]);
 
   const amountRO = form.watch("amountRO");
   const amountBz = form.watch("amountBz");
@@ -121,15 +111,12 @@ export function VoucherForm({ voucher }: VoucherFormProps) {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
     try {
-      const currentUser = auth.currentUser;
-      if (!currentUser) throw new Error("User session expired");
-
       if (isEditMode && voucher) {
-        await updateVoucher(voucher.id, values, db, currentUser.uid);
+        await updateVoucher(voucher.id, values, db, user!.uid);
         toast({ title: "Updated Record", description: "The voucher has been successfully updated." });
         router.push(`/vouchers/${voucher.id}`);
       } else {
-        const res = await createVoucher(values, db, currentUser.uid);
+        const res = await createVoucher(values, db, user!.uid);
         toast({ title: "Saving Record", description: "Generating your new sequential voucher..." });
         router.push(`/vouchers/${res.id}`);
       }

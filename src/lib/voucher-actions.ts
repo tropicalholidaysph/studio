@@ -14,7 +14,9 @@ import {
   updateDoc,
   deleteDoc,
   Firestore,
-  where
+  where,
+  runTransaction,
+  increment
 } from "firebase/firestore";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -99,6 +101,21 @@ export async function deleteLedger(id: string, uid: string) {
   });
 }
 
+export async function getNextVoucherNumber(ledgerId: string): Promise<number> {
+  const db = getDb();
+  const counterRef = doc(db, "ledger_counters", ledgerId);
+
+  const newCount = await runTransaction(db, async (transaction) => {
+    const counterDoc = await transaction.get(counterRef);
+    const current = counterDoc.exists() ? counterDoc.data().count : 0;
+    const next = current + 1;
+    transaction.set(counterRef, { count: next }, { merge: true });
+    return next;
+  });
+
+  return newCount;
+}
+
 // --- Voucher Actions ---
 
 export async function bulkImportVouchers(vouchers: Omit<Voucher, 'id' | 'createdAt'>[]) {
@@ -177,7 +194,10 @@ export async function updateVoucher(id: string, voucherData: Partial<Voucher>, d
   }
   const docRef = doc(db, VOUCHERS_COLLECTION, id);
 
-  await updateDoc(docRef, voucherData).catch((error) => {
+  await updateDoc(docRef, {
+    ...voucherData,
+    updatedAt: new Date().toISOString(),
+  }).catch((error) => {
     errorEmitter.emit('permission-error', new FirestorePermissionError({
       path: docRef.path,
       operation: 'update',
@@ -200,4 +220,17 @@ export async function getVoucherById(id: string): Promise<Voucher | null> {
   } catch (error) {
     return null;
   }
+}
+export async function voidVoucher(id: string, uid: string) {
+  const role = await getRole(uid);
+  if (role !== 'admin' && role !== 'employee') throw new Error("Unauthorized");
+  const db = getDb();
+  await updateDoc(doc(db, VOUCHERS_COLLECTION, id), {
+    isVoid: true,
+    recipient: "VOID / NO DATA",
+    amountRO: 0,
+    amountBz: 0,
+    sumInWords: "VOID",
+    updatedAt: new Date().toISOString(),
+  });
 }

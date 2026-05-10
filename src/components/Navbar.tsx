@@ -10,8 +10,10 @@ import { useAuth } from "@/firebase";
 import { signOut } from "firebase/auth";
 import { ModeToggle } from "@/components/ModeToggle";
 import { useRole } from "@/lib/role-context";
+import { useSessionTimeout } from "@/hooks/use-session-timeout";
 
 export function Navbar() {
+  useSessionTimeout();
   const router = useRouter();
   const auth = useAuth();
   const { role, isAdmin, isEmployee, setRole } = useRole();

@@ -4,19 +4,33 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
 import { VoucherVisual } from "@/components/VoucherVisual";
-import { getVoucherById } from "@/lib/voucher-actions";
+import { getVoucherById, voidVoucher } from "@/lib/voucher-actions";
 import { Voucher } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Printer, ArrowLeft, Loader2, Edit2 } from "lucide-react";
+import { Printer, ArrowLeft, Loader2, Edit2, Ban } from "lucide-react";
 import Link from "next/link";
 import { useRole } from "@/lib/role-context";
+import { useFirebase } from "@/firebase";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
 
 export default function VoucherDetailPage() {
   const { id } = useParams();
   const [voucher, setVoucher] = useState<Voucher | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isVoiding, setIsVoiding] = useState(false);
+  const [showVoidDialog, setShowVoidDialog] = useState(false);
   const router = useRouter();
   const { isAdmin, isEmployee } = useRole();
+  const { user } = useFirebase();
+  const { toast } = useToast();
 
   useEffect(() => {
     const auth = localStorage.getItem("auth");
@@ -37,6 +51,22 @@ export default function VoucherDetailPage() {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleVoid = async () => {
+    if (!voucher || !user) return;
+    setIsVoiding(true);
+    try {
+      await voidVoucher(voucher.id, user.uid);
+      const updated = await getVoucherById(voucher.id);
+      setVoucher(updated);
+      setShowVoidDialog(false);
+      toast({ title: "Voucher Voided", description: "The voucher has been marked as void." });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Error", description: "Failed to void voucher." });
+    } finally {
+      setIsVoiding(false);
+    }
   };
 
   if (loading) {
@@ -78,6 +108,16 @@ export default function VoucherDetailPage() {
                 </Button>
               </Link>
             )}
+            {(isAdmin || isEmployee) && !voucher.isVoid && (
+              <Button 
+                variant="destructive"
+                onClick={() => setShowVoidDialog(true)}
+                className="flex items-center gap-2"
+              >
+                <Ban className="w-4 h-4" />
+                Mark as Void
+              </Button>
+            )}
             <Button 
               onClick={handlePrint}
               className="bg-accent hover:bg-accent/90 text-white flex items-center gap-2 shadow-md"
@@ -98,6 +138,23 @@ export default function VoucherDetailPage() {
       <div className="print-only">
         <VoucherVisual voucher={voucher} />
       </div>
+
+      <Dialog open={showVoidDialog} onOpenChange={setShowVoidDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mark Voucher as Void?</DialogTitle>
+            <DialogDescription>
+              This will set the amount to zero and mark the recipient as VOID. This action is tracked but cannot be easily reversed.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowVoidDialog(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleVoid} disabled={isVoiding}>
+              {isVoiding ? "Voiding..." : "Confirm Void"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -18,6 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Voucher, PaymentMethod, Ledger } from "@/lib/types";
@@ -32,7 +33,8 @@ import {
   Trash2,
   Trash,
   AlertCircle,
-  Download
+  Download,
+  FileDown
 } from "lucide-react";
 import * as XLSX from "xlsx-js-style";
 import {
@@ -97,6 +99,8 @@ export function VoucherTable() {
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pendingDeleteLedgerId, setPendingDeleteLedgerId] = useState<string | null>(null);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -141,7 +145,7 @@ export function VoucherTable() {
 
   async function handleAddLedger() {
     if (!newLedgerName.trim() || !firestore || !user) return;
-    const ledger = await createLedger(newLedgerName, firestore, user.uid);
+    const ledger = await createLedger(newLedgerName, firestore, user!.uid);
     if (ledger) {
       setActiveLedgerId(ledger.id);
       setNewLedgerName("");
@@ -151,14 +155,15 @@ export function VoucherTable() {
 
   async function handleRenameLedger() {
     if (!editingLedger || !editName.trim() || !firestore || !user) return;
-    await renameLedger(editingLedger.id, editName, user.uid);
+    await renameLedger(editingLedger.id, editName, user!.uid);
     setEditingLedger(null);
   }
 
   async function handleDeleteLedger(id: string) {
     if (!user) return;
-    await deleteLedger(id, user.uid);
+    await deleteLedger(id, user!.uid);
     if (activeLedgerId === id) setActiveLedgerId("");
+    setPendingDeleteLedgerId(null);
   }
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -187,7 +192,7 @@ export function VoucherTable() {
           let targetLedgerId = localExistingLedgers.get(sheetName.trim().toLowerCase());
 
           if (!targetLedgerId) {
-            const newLedger = await createLedger(sheetName.trim(), firestore, user.uid);
+            const newLedger = await createLedger(sheetName.trim(), firestore, user!.uid);
             if (newLedger) {
               targetLedgerId = newLedger.id;
               localExistingLedgers.set(sheetName.trim().toLowerCase(), targetLedgerId);
@@ -233,9 +238,28 @@ export function VoucherTable() {
             });
           });
 
-          if (vouchersForSheet.length > 0) {
-            await bulkImportVouchers(vouchersForSheet);
-            totalImportedCount += vouchersForSheet.length;
+          // Fetch existing voucher numbers for this ledger
+          const existingQ = query(
+            collection(firestore, "vouchers"),
+            where("ledgerId", "==", targetLedgerId)
+          );
+          const existingSnap = await getDocs(existingQ);
+          const existingNos = new Set(existingSnap.docs.map(d => d.data().voucherNo));
+
+          // Filter out duplicates
+          const newVouchers = vouchersForSheet.filter(v => !existingNos.has(v.voucherNo));
+          const skippedCount = vouchersForSheet.length - newVouchers.length;
+
+          if (newVouchers.length > 0) {
+            await bulkImportVouchers(newVouchers);
+            totalImportedCount += newVouchers.length;
+          }
+
+          if (skippedCount > 0) {
+            toast({ 
+              title: "Duplicates Skipped", 
+              description: `${skippedCount} existing vouchers in '${sheetName}' were skipped.` 
+            });
           }
         }
 
@@ -362,6 +386,37 @@ export function VoucherTable() {
     }
   };
 
+  const handleExportSingleSheet = async () => {
+    if (vouchers.length === 0) return;
+    setIsExporting(true);
+    try {
+      const activeLedger = ledgers.find(l => l.id === activeLedgerId);
+      const sheetName = activeLedger ? activeLedger.name : "Vouchers";
+      
+      const wb = XLSX.utils.book_new();
+      const data = vouchers.map(v => ({
+        "Voucher No": v.voucherNo,
+        "Date": v.date,
+        "Paid To": v.recipient,
+        "Amount (R.O.)": v.amountRO,
+        "Amount (Bz)": v.amountBz,
+        "Payment Method": v.paymentMethod,
+        "Bank": v.bankName || "",
+        "Cheque/Ref No": v.refNo || "",
+        "Being (Purpose)": v.purpose
+      }));
+      
+      const ws = XLSX.utils.json_to_sheet(data);
+      XLSX.utils.book_append_sheet(wb, ws, sheetName.substring(0, 31));
+      XLSX.writeFile(wb, `Tropical_Holidays_${sheetName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      toast({ title: "Sheet Exported" });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Export Error" });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const filteredVouchers = vouchers
     .filter((v) =>
       v.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -397,8 +452,9 @@ export function VoucherTable() {
     if (selectedIds.size === 0 || !user) return;
     setIsBulkDeleting(true);
     try {
-      await bulkDeleteVouchers(Array.from(selectedIds), user.uid);
+      await bulkDeleteVouchers(Array.from(selectedIds), user!.uid);
       setSelectedIds(new Set());
+      setShowBulkDeleteConfirm(false);
       toast({ title: "Deleted Records" });
     } catch (e) {
       toast({ variant: "destructive", title: "Deletion Failed" });
@@ -406,6 +462,11 @@ export function VoucherTable() {
       setIsBulkDeleting(false);
     }
   };
+
+  const voucherNoCounts = vouchers.reduce((acc, v) => {
+    acc[v.voucherNo] = (acc[v.voucherNo] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
 
   return (
     <div className="flex flex-col h-[calc(100vh-200px)] min-h-[600px] border rounded-lg bg-card text-card-foreground shadow-xl overflow-hidden">
@@ -426,7 +487,7 @@ export function VoucherTable() {
               variant="destructive"
               size="sm"
               className="h-8 text-[11px]"
-              onClick={handleBulkDelete}
+              onClick={() => setShowBulkDeleteConfirm(true)}
               disabled={isBulkDeleting}
             >
               <Trash className="w-3 h-3 mr-1" />
@@ -453,9 +514,19 @@ export function VoucherTable() {
           <Button
             variant="outline"
             size="sm"
+            onClick={handleExportSingleSheet}
+            disabled={vouchers.length === 0 || isExporting}
+            className="h-9 text-xs border-emerald-600 text-emerald-600 hover:bg-emerald-600 hover:text-white"
+          >
+            {isExporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileDown className="w-3 h-3" />}
+            Export Current Sheet
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={handleExportFullFile}
             disabled={ledgers.length === 0 || isExporting}
-            className="h-9 text-xs border-emerald-600 text-emerald-600 hover:bg-emerald-600 hover:text-white"
+            className="h-9 text-xs border-slate-600 text-slate-600 hover:bg-slate-600 hover:text-white"
           >
             {isExporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
             Export Full Workbook
@@ -540,6 +611,11 @@ export function VoucherTable() {
                       )}
                       <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] font-mono font-bold text-left">
                         {v.voucherNo}
+                        {voucherNoCounts[v.voucherNo] > 1 && (
+                          <span className="ml-1 text-[9px] bg-yellow-400 text-yellow-900 font-bold px-1 rounded shadow-sm" title="Duplicate Voucher Number">
+                            DUP
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] text-left">{v.date}</TableCell>
                       <TableCell className="border-r border-b border-border/50 px-2 py-1 text-[11px] font-semibold text-left">
@@ -570,6 +646,20 @@ export function VoucherTable() {
                 })
               )}
             </TableBody>
+            <tfoot className="sticky bottom-0 bg-slate-900 text-white z-10 no-print">
+              <tr>
+                {isAdmin && <td className="px-2 py-1.5" />}
+                <td className="px-2 py-1.5 text-[11px] font-bold" colSpan={2}>TOTAL ({filteredVouchers.length} records)</td>
+                <td className="px-2 py-1.5 text-[11px]" />
+                <td className="px-2 py-1.5 text-[11px] font-black">
+                  {filteredVouchers.reduce((sum, v) => sum + (v.amountRO || 0), 0).toLocaleString()}
+                </td>
+                <td className="px-2 py-1.5 text-[11px] font-mono">
+                  {String(filteredVouchers.reduce((sum, v) => sum + (v.amountBz || 0), 0)).padStart(3, '0')}
+                </td>
+                <td colSpan={5} />
+              </tr>
+            </tfoot>
           </Table>
         )}
       </div>
@@ -596,7 +686,7 @@ export function VoucherTable() {
                       <DropdownMenuItem onClick={() => { setEditingLedger(ledger); setEditName(ledger.name); }}>
                         <Edit2 className="w-3 h-3 mr-2" /> Rename
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteLedger(ledger.id)}>
+                      <DropdownMenuItem className="text-destructive" onClick={() => setPendingDeleteLedgerId(ledger.id)}>
                         <Trash2 className="w-3 h-3 mr-2" /> Delete
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -660,6 +750,35 @@ export function VoucherTable() {
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setEditingLedger(null)}>Cancel</Button>
             <Button size="sm" onClick={handleRenameLedger}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!pendingDeleteLedgerId} onOpenChange={(open) => !open && setPendingDeleteLedgerId(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Delete Ledger Sheet?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete the sheet and all its vouchers. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setPendingDeleteLedgerId(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => pendingDeleteLedgerId && handleDeleteLedger(pendingDeleteLedgerId)}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Delete Vouchers?</DialogTitle>
+            <DialogDescription>
+              You are about to delete {selectedIds.size} selected vouchers. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setShowBulkDeleteConfirm(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleBulkDelete}>Delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
