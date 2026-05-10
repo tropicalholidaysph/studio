@@ -29,7 +29,7 @@ import { convertAmountToWords } from "@/lib/amount-utils";
 import { Save, Loader2, FileText, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Ledger, Voucher } from "@/lib/types";
-import { useFirestore } from "@/firebase";
+import { useFirestore, useAuth, useUser } from "@/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import Link from "next/link";
 
@@ -57,6 +57,8 @@ export function VoucherForm({ voucher }: VoucherFormProps) {
   const router = useRouter();
   const { toast } = useToast();
   const db = useFirestore();
+  const auth = useAuth();
+  const { user } = useUser();
 
   const isEditMode = !!voucher;
 
@@ -119,12 +121,15 @@ export function VoucherForm({ voucher }: VoucherFormProps) {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
     try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("User session expired");
+
       if (isEditMode && voucher) {
-        await updateVoucher(voucher.id, values, db);
+        await updateVoucher(voucher.id, values, db, currentUser.uid);
         toast({ title: "Updated Record", description: "The voucher has been successfully updated." });
         router.push(`/vouchers/${voucher.id}`);
       } else {
-        const res = createVoucher(values, db);
+        const res = await createVoucher(values, db, currentUser.uid);
         toast({ title: "Saving Record", description: "Generating your new sequential voucher..." });
         router.push(`/vouchers/${res.id}`);
       }

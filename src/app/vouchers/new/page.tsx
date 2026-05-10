@@ -14,6 +14,9 @@ export default function NewVoucherPage() {
     const { toast } = useToast();
   
     useEffect(() => {
+      // Wait until role is loaded from context
+      if (role === null) return;
+
       const auth = localStorage.getItem("auth");
       if (auth !== "true") {
         router.push("/login");
@@ -21,7 +24,7 @@ export default function NewVoucherPage() {
       }
       
       // Only authorized roles can access this page
-      if (role && !isAdmin && !isEmployee) {
+      if (!isAdmin && !isEmployee) {
       toast({
         variant: "destructive",
         title: "Access Denied",
@@ -31,10 +34,8 @@ export default function NewVoucherPage() {
       return;
     }
     
-    if (role) {
-      setIsAuthenticated(true);
-    }
-  }, [router, isAdmin, role, toast]);
+    setIsAuthenticated(true);
+  }, [router, isAdmin, isEmployee, role, toast]);
 
   if (!isAuthenticated) return null;
 

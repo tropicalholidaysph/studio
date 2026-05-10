@@ -159,7 +159,7 @@ export async function createVoucher(voucher: Omit<Voucher, 'id' | 'createdAt'>, 
     createdAt: new Date().toISOString(),
   };
 
-  setDoc(docRef, data).catch((error) => {
+  await setDoc(docRef, data).catch((error) => {
     errorEmitter.emit('permission-error', new FirestorePermissionError({
       path: docRef.path,
       operation: 'create',

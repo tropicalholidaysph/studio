@@ -95,9 +95,20 @@ export function VoucherTable() {
   const [editName, setEditName] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIsRefreshing(true);
+      setLastRefresh(new Date());
+      setTimeout(() => setIsRefreshing(false), 2000);
+    }, 10 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const ledgersQuery = useMemoFirebase(() => {
     if (!firestore || !user || isUserLoading) return null;
@@ -119,7 +130,7 @@ export function VoucherTable() {
       collection(firestore, "vouchers"),
       where("ledgerId", "==", activeLedgerId)
     );
-  }, [firestore, user, activeLedgerId, isUserLoading, ledgersLoading]);
+  }, [firestore, user, activeLedgerId, isUserLoading, ledgersLoading, lastRefresh]);
 
   const { data: vouchersData, isLoading: vouchersLoading } = useCollection<Voucher>(vouchersQuery);
   const vouchers = vouchersData || [];
@@ -130,20 +141,23 @@ export function VoucherTable() {
 
   async function handleAddLedger() {
     if (!newLedgerName.trim() || !firestore || !user) return;
-    const ledger = await createLedger(newLedgerName, firestore);
-    setActiveLedgerId(ledger.id);
-    setNewLedgerName("");
-    setIsAddingLedger(false);
+    const ledger = await createLedger(newLedgerName, firestore, user.uid);
+    if (ledger) {
+      setActiveLedgerId(ledger.id);
+      setNewLedgerName("");
+      setIsAddingLedger(false);
+    }
   }
 
   async function handleRenameLedger() {
-    if (!editingLedger || !editName.trim() || !firestore) return;
-    await renameLedger(editingLedger.id, editName);
+    if (!editingLedger || !editName.trim() || !firestore || !user) return;
+    await renameLedger(editingLedger.id, editName, user.uid);
     setEditingLedger(null);
   }
 
   async function handleDeleteLedger(id: string) {
-    await deleteLedger(id);
+    if (!user) return;
+    await deleteLedger(id, user.uid);
     if (activeLedgerId === id) setActiveLedgerId("");
   }
 
@@ -173,10 +187,14 @@ export function VoucherTable() {
           let targetLedgerId = localExistingLedgers.get(sheetName.trim().toLowerCase());
 
           if (!targetLedgerId) {
-            const newLedger = await createLedger(sheetName.trim(), firestore);
-            targetLedgerId = newLedger.id;
-            localExistingLedgers.set(sheetName.trim().toLowerCase(), targetLedgerId);
-            if (!activeLedgerId) setActiveLedgerId(targetLedgerId);
+            const newLedger = await createLedger(sheetName.trim(), firestore, user.uid);
+            if (newLedger) {
+              targetLedgerId = newLedger.id;
+              localExistingLedgers.set(sheetName.trim().toLowerCase(), targetLedgerId);
+              if (!activeLedgerId) setActiveLedgerId(targetLedgerId);
+            } else {
+              continue; // Skip sheet if ledger creation failed
+            }
           }
 
           const vouchersForSheet: any[] = [];
@@ -376,10 +394,10 @@ export function VoucherTable() {
   };
 
   const handleBulkDelete = async () => {
-    if (selectedIds.size === 0) return;
+    if (selectedIds.size === 0 || !user) return;
     setIsBulkDeleting(true);
     try {
-      await bulkDeleteVouchers(Array.from(selectedIds));
+      await bulkDeleteVouchers(Array.from(selectedIds), user.uid);
       setSelectedIds(new Set());
       toast({ title: "Deleted Records" });
     } catch (e) {
@@ -598,6 +616,13 @@ export function VoucherTable() {
             )}
           </TabsList>
         </Tabs>
+        <div className="hidden sm:flex items-center gap-2 px-3 text-[10px] text-muted-foreground whitespace-nowrap">
+          {isRefreshing ? (
+            <span className="animate-pulse text-primary font-bold">Refreshing...</span>
+          ) : (
+            <span>Last updated: {lastRefresh.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+          )}
+        </div>
       </div>
 
       <Dialog open={isAddingLedger} onOpenChange={setIsAddingLedger}>
