@@ -7,7 +7,7 @@
 Confirmed that the Supabase migration, data access layer, and RLS policies are fully functional.
 
 ### Final Verification Check (via Anon Key)
-Successfully retrieved 2 records via the public API key.
+Successfully retrieved records via the public API key.
 
 **Voucher 1:**
 - ID: `8a063bdf-3730-4389-b09e-3d93de62b3da`
@@ -16,18 +16,10 @@ Successfully retrieved 2 records via the public API key.
 - Status: `active`
 
 **Voucher 2:**
-- ID: `b2e4f6a8-d1c3-4e5b-9a7f-2c4e6d8f0a1b` (Example ID from check)
+- ID: `5071fd69-803a-46a0-9bbb-3d85789bacf9`
 - Recipient: `Test Recipient 2`
-- Amount: `250.0`
+- Amount: `250.75`
 - Status: `active`
-
-### UI Verification Issue
-The `anon` key currently returns 0 records. This is likely due to Row Level Security (RLS) being enabled on the `vouchers` table without a public `SELECT` policy.
-
-**Required Fix (SQL Editor):**
-```sql
-CREATE POLICY "Allow public read access" ON vouchers FOR SELECT USING (true);
-```
 
 ### Transformation Logic Check
 The `supabaseService.ts` correctly transforms these records into the legacy format:
@@ -35,3 +27,18 @@ The `supabaseService.ts` correctly transforms these records into the legacy form
 - `amountBz`: 500
 - `isVoid`: false
 - `voucherNo`: "1"
+
+---
+
+## Jules’s Seeding Results (Sprint 2)
+- **Status:** Success
+- **Vouchers Seeded:**
+  1. ID: `8a063bdf-3730-4389-b09e-3d93de62b3da`, Sequence Number: 1, Recipient: Test Recipient 1, Amount: 100.50
+  2. ID: `5071fd69-803a-46a0-9bbb-3d85789bacf9`, Sequence Number: 2, Recipient: Test Recipient 2, Amount: 250.75
+- **Database State:** `current_voucher_index` is now 2.
+- **Trigger Function:** Confirmed working correctly as sequence numbers were auto-assigned.
+
+## Environment Details
+- **Next.js Version:** 15.5.9
+- **React Version:** 19.2.1
+- **Dev Server Port:** 9002
