@@ -77,3 +77,13 @@ CREATE TRIGGER trg_vouchers_updated_at
 BEFORE UPDATE ON vouchers
 FOR EACH ROW
 EXECUTE FUNCTION handle_updated_at();
+
+-- Enable Row Level Security
+ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vouchers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE metadata ENABLE ROW LEVEL SECURITY;
+
+-- Simple Policies for Development (Allow all for now, to be refined later)
+CREATE POLICY "Allow public read for vouchers" ON vouchers FOR SELECT USING (true);
+CREATE POLICY "Allow public read for employees" ON employees FOR SELECT USING (true);
+CREATE POLICY "Allow public read for metadata" ON metadata FOR SELECT USING (true);
