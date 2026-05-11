@@ -1,5 +1,8 @@
 "use client";
 
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+
 import { useState, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
@@ -643,13 +646,27 @@ export function VoucherTable() {
                           <TableCell className="px-2 py-1 text-[11px] truncate" title={v.purpose}>{v.purpose}</TableCell>
                           <TableCell className="px-2 py-1 text-[11px] italic">{v.bankName || "-"}</TableCell>
                           <TableCell className="px-2 py-1 flex gap-1">
-                            <Link href={`/vouchers/${v.id}`}>
-                              <Button variant="ghost" size="icon" className="h-6 w-6 text-primary"><Eye className="w-3.5 h-3.5" /></Button>
-                            </Link>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Link href={`/vouchers/${v.id}`}>
+                                  <Button variant="ghost" size="icon" className="h-6 w-6 text-primary" aria-label="View voucher details">
+                                    <Eye className="w-3.5 h-3.5" />
+                                  </Button>
+                                </Link>
+                              </TooltipTrigger>
+                              <TooltipContent>View Details</TooltipContent>
+                            </Tooltip>
                             {(isAdmin || isEmployee) && (
-                              <Link href={`/vouchers/${v.id}/edit`}>
-                                <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground"><Edit2 className="w-3.5 h-3.5" /></Button>
-                              </Link>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Link href={`/vouchers/${v.id}/edit`}>
+                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" aria-label="Edit voucher">
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </Button>
+                                  </Link>
+                                </TooltipTrigger>
+                                <TooltipContent>Edit Voucher</TooltipContent>
+                              </Tooltip>
                             )}
                           </TableCell>
                         </TableRow>
@@ -677,13 +694,27 @@ export function VoucherTable() {
                         <p className="font-black text-base">{v.amountRO.toLocaleString()}<span className="text-[10px] ml-0.5">RO</span></p>
                         <p className="text-[10px] font-mono text-muted-foreground">{v.amountBz.toString().padStart(3, '0')} BZ</p>
                         <div className="flex gap-2 mt-2 justify-end">
-                          <Link href={`/vouchers/${v.id}`}>
-                            <Button variant="outline" size="icon" className="h-8 w-8 rounded-full"><Eye className="w-4 h-4" /></Button>
-                          </Link>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Link href={`/vouchers/${v.id}`}>
+                                <Button variant="outline" size="icon" className="h-8 w-8 rounded-full" aria-label="View voucher details">
+                                  <Eye className="w-4 h-4" />
+                                </Button>
+                              </Link>
+                            </TooltipTrigger>
+                            <TooltipContent>View Details</TooltipContent>
+                          </Tooltip>
                           {(isAdmin || isEmployee) && (
-                            <Link href={`/vouchers/${v.id}/edit`}>
-                              <Button variant="outline" size="icon" className="h-8 w-8 rounded-full"><Edit2 className="w-4 h-4" /></Button>
-                            </Link>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Link href={`/vouchers/${v.id}/edit`}>
+                                  <Button variant="outline" size="icon" className="h-8 w-8 rounded-full" aria-label="Edit voucher">
+                                    <Edit2 className="w-4 h-4" />
+                                  </Button>
+                                </Link>
+                              </TooltipTrigger>
+                              <TooltipContent>Edit Voucher</TooltipContent>
+                            </Tooltip>
                           )}
                         </div>
                       </div>
@@ -708,18 +739,24 @@ export function VoucherTable() {
                     {ledger.name}
                   </TabsTrigger>
                   {isAdmin && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-9 w-6 rounded-none opacity-0 group-hover:opacity-100 hover:text-red-600 transition-opacity"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPendingDeleteLedgerId(ledger.id);
-                        setShowDeleteLedgerConfirm(true);
-                      }}
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-6 rounded-none opacity-0 group-hover:opacity-100 hover:text-red-600 transition-opacity"
+                          aria-label="Delete ledger sheet"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPendingDeleteLedgerId(ledger.id);
+                            setShowDeleteLedgerConfirm(true);
+                          }}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Delete Sheet</TooltipContent>
+                    </Tooltip>
                   )}
                 </div>
               ))}

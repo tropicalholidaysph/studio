@@ -1,10 +1,10 @@
-
 import type {Metadata} from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { FirebaseClientProvider } from '@/firebase/client-provider';
 import { ThemeProvider } from '@/components/theme-provider';
 import { RoleProvider } from '@/lib/role-context';
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 export const metadata: Metadata = {
   title: "Tropical Holidays – Secure Ledger",
@@ -36,8 +36,10 @@ export default function RootLayout({
             disableTransitionOnChange
           >
             <RoleProvider>
-              {children}
-              <Toaster />
+              <TooltipProvider>
+                {children}
+                <Toaster />
+              </TooltipProvider>
             </RoleProvider>
           </ThemeProvider>
         </FirebaseClientProvider>

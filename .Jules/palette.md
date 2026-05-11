@@ -1,0 +1,3 @@
+## 2025-05-14 - [Micro-UX: Tooltips and ARIA Labels]
+**Learning:** For icon-only buttons in a multi-view application (desktop table vs. mobile cards), adding tooltips and ARIA labels significantly improves both visual clarity for sighted users and accessibility for screen reader users. It's crucial to ensure that ARIA labels are descriptive and unique, especially when multiple similar actions (like "View" or "Edit") appear in a list.
+**Action:** Always include ARIA labels for icon-only buttons and consider tooltips for any interactive element that lacks a text label. Use unique labels for list items if possible (e.g., "View voucher 101" instead of just "View", though here I used generic labels as a baseline improvement).

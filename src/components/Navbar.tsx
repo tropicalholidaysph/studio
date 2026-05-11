@@ -1,10 +1,10 @@
-
 "use client";
 
 import LinkNext from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PlusCircle, List, LogOut, Shield, ShieldCheck, History } from "lucide-react";
 import { useAuth } from "@/firebase";
 import { signOut } from "firebase/auth";
@@ -58,14 +58,14 @@ export function Navbar() {
           
           <div className="flex items-center gap-2 sm:gap-4">
             <LinkNext href="/">
-              <Button variant="ghost" size="sm" className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" className="flex items-center gap-2" aria-label="View vouchers list">
                 <List className="w-4 h-4" />
                 <span className="hidden sm:inline">Vouchers</span>
               </Button>
             </LinkNext>
             {isAdmin && (
               <LinkNext href="/activity">
-                <Button variant="ghost" size="sm" className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" className="flex items-center gap-2" aria-label="View activity logs">
                   <History className="w-4 h-4 text-primary" />
                   <span className="hidden sm:inline">Activity</span>
                 </Button>
@@ -73,16 +73,21 @@ export function Navbar() {
             )}
             {(isAdmin || isEmployee) && (
               <LinkNext href="/vouchers/new">
-                <Button size="sm" className="bg-[#E66E38] hover:bg-[#E66E38]/90 text-white flex items-center gap-2">
+                <Button size="sm" className="bg-[#E66E38] hover:bg-[#E66E38]/90 text-white flex items-center gap-2" aria-label="Create new voucher">
                   <PlusCircle className="w-4 h-4" />
                   <span className="hidden sm:inline">New Voucher</span>
                 </Button>
               </LinkNext>
             )}
             <ModeToggle />
-            <Button variant="outline" size="sm" onClick={handleLogout} className="border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground">
-              <LogOut className="w-4 h-4" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="sm" onClick={handleLogout} className="border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground" aria-label="Sign out">
+                  <LogOut className="w-4 h-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Logout</TooltipContent>
+            </Tooltip>
           </div>
         </div>
       </div>
