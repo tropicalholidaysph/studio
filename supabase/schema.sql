@@ -1,7 +1,7 @@
--- Tropical Holidays Secure Ledger: Unified Supabase Schema
--- This single script initializes the entire database structure.
+-- Tropical Holidays Secure Ledger: Unified & Robust Supabase Schema
+-- This script is idempotent: it can be run multiple times safely.
 
--- 1. Prerequisites
+-- 1. Prerequisites & Extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- 2. Tables
@@ -52,13 +52,32 @@ ALTER TABLE public.ledgers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vouchers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
 
--- 4. Policies (Broad authenticated access, role-checking handled in app logic)
+-- 4. Policies (Clean and Re-create)
+-- user_roles
+DO $$ BEGIN
+    DROP POLICY IF EXISTS "Full access for authenticated users on user_roles" ON public.user_roles;
+EXCEPTION WHEN undefined_object THEN null; END $$;
 CREATE POLICY "Full access for authenticated users on user_roles" ON public.user_roles FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- ledgers
+DO $$ BEGIN
+    DROP POLICY IF EXISTS "Full access for authenticated users on ledgers" ON public.ledgers;
+EXCEPTION WHEN undefined_object THEN null; END $$;
 CREATE POLICY "Full access for authenticated users on ledgers" ON public.ledgers FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- vouchers
+DO $$ BEGIN
+    DROP POLICY IF EXISTS "Full access for authenticated users on vouchers" ON public.vouchers;
+EXCEPTION WHEN undefined_object THEN null; END $$;
 CREATE POLICY "Full access for authenticated users on vouchers" ON public.vouchers FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- activity_logs
+DO $$ BEGIN
+    DROP POLICY IF EXISTS "Full access for authenticated users on activity_logs" ON public.activity_logs;
+EXCEPTION WHEN undefined_object THEN null; END $$;
 CREATE POLICY "Full access for authenticated users on activity_logs" ON public.activity_logs FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
--- 5. Automation (Triggers)
+-- 5. Automation (Functions & Triggers)
 CREATE OR REPLACE FUNCTION handle_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -67,5 +86,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_vouchers_updated_at BEFORE UPDATE ON vouchers FOR EACH ROW EXECUTE FUNCTION handle_updated_at();
-CREATE TRIGGER trg_user_roles_updated_at BEFORE UPDATE ON user_roles FOR EACH ROW EXECUTE FUNCTION handle_updated_at();
+-- Vouchers trigger
+DROP TRIGGER IF EXISTS trg_vouchers_updated_at ON vouchers;
+CREATE TRIGGER trg_vouchers_updated_at 
+BEFORE UPDATE ON vouchers 
+FOR EACH ROW EXECUTE FUNCTION handle_updated_at();
+
+-- User Roles trigger
+DROP TRIGGER IF EXISTS trg_user_roles_updated_at ON user_roles;
+CREATE TRIGGER trg_user_roles_updated_at 
+BEFORE UPDATE ON user_roles 
+FOR EACH ROW EXECUTE FUNCTION handle_updated_at();
