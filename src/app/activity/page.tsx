@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
 import { useRole } from "@/lib/role-context";
@@ -33,18 +33,22 @@ export default function ActivityPage() {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const isRedirecting = useRef(false);
 
   useEffect(() => {
+    if (isRedirecting.current) return;
     const auth = localStorage.getItem("auth");
     if (auth !== "true") {
+      isRedirecting.current = true;
       router.push("/login");
       return;
     }
   }, [router]);
 
   useEffect(() => {
-    if (roleLoading) return;
+    if (roleLoading || isRedirecting.current) return;
     if (!isAdmin) {
+      isRedirecting.current = true;
       router.push("/");
       return;
     }

@@ -10,6 +10,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import {convertAmountToWords} from '@/lib/amount-utils';
 
 const VoucherAmountToWordsConverterInputSchema = z
   .object({
@@ -33,14 +34,6 @@ export type VoucherAmountToWordsConverterOutput = z.infer<
   typeof VoucherAmountToWordsConverterOutputSchema
 >;
 
-const voucherAmountToWordsConverterPrompt = ai.definePrompt({
-  name: 'voucherAmountToWordsConverterPrompt',
-  input: {schema: VoucherAmountToWordsConverterInputSchema},
-  output: {schema: VoucherAmountToWordsConverterOutputSchema},
-  prompt: `Convert the numerical amount {{{amountInRO}}} to its word format.
-  The amount is in Omani Rial. Ensure the output is formatted as 'Sum of Rial Omani' and includes any decimal parts as baisa (1 Rial Omani = 1000 baisa).`,
-});
-
 const voucherAmountToWordsConverterFlow = ai.defineFlow(
   {
     name: 'voucherAmountToWordsConverterFlow',
@@ -48,11 +41,9 @@ const voucherAmountToWordsConverterFlow = ai.defineFlow(
     outputSchema: VoucherAmountToWordsConverterOutputSchema,
   },
   async input => {
-    const {output} = await voucherAmountToWordsConverterPrompt(input);
-    if (!output) {
-      throw new Error('Failed to convert amount to words.');
-    }
-    return output;
+    // Use the local deterministic utility for conversion
+    const amountInWords = convertAmountToWords(input.amountInRO);
+    return {amountInWords};
   }
 );
 

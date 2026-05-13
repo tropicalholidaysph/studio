@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
 import { VoucherForm } from "@/components/VoucherForm";
@@ -12,19 +12,22 @@ export default function NewVoucherPage() {
   const router = useRouter();
     const { isAdmin, isEmployee, role } = useRole();
     const { toast } = useToast();
+    const isRedirecting = useRef(false);
   
     useEffect(() => {
       // Wait until role is loaded from context
-      if (role === null) return;
+      if (role === null || isRedirecting.current) return;
 
       const auth = localStorage.getItem("auth");
       if (auth !== "true") {
+        isRedirecting.current = true;
         router.push("/login");
         return;
       }
       
       // Only authorized roles can access this page
       if (!isAdmin && !isEmployee) {
+      isRedirecting.current = true;
       toast({
         variant: "destructive",
         title: "Access Denied",

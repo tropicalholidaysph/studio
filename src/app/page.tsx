@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
 import { VoucherTable } from "@/components/VoucherTable";
@@ -15,22 +15,25 @@ export default function Dashboard() {
   const [isClient, setIsClient] = useState(false);
   const router = useRouter();
   const { isAdmin, isEmployee } = useRole();
+  const isRedirecting = useRef(false);
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
   useEffect(() => {
-    if (!isClient || isUserLoading) return;
+    if (!isClient || isUserLoading || isRedirecting.current) return;
 
     const localAuth = localStorage.getItem("auth");
 
     // If we have no user and no local auth, redirect to login
     if (!user && localAuth !== "true") {
+      isRedirecting.current = true;
       router.push("/login");
     }
     // If localAuth is true but Firebase session is missing after loading, force re-login
     else if (!user && localAuth === "true") {
+      isRedirecting.current = true;
       localStorage.removeItem("auth");
       router.push("/login");
     }

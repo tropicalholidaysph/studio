@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
 import { VoucherVisual } from "@/components/VoucherVisual";
@@ -31,10 +31,13 @@ export default function VoucherDetailPage() {
   const { isAdmin, isEmployee } = useRole();
   const { user } = useFirebase();
   const { toast } = useToast();
+  const isRedirecting = useRef(false);
 
   useEffect(() => {
+    if (isRedirecting.current) return;
     const auth = localStorage.getItem("auth");
     if (auth !== "true") {
+      isRedirecting.current = true;
       router.push("/login");
       return;
     }
