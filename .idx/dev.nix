@@ -21,6 +21,16 @@
   idx = {
     # Search for the extensions you want on https://open-vsx.org/ and use "publisher.id"
     extensions = [
+      "dbaeumer.vscode-eslint",
+      "esbenp.prettier-vscode",
+      "bradlc.vscode-tailwindcss",
+      "dsznajder.es7-react-js-snippets",
+      "christian-kohler.path-intellisense",
+      "irongeek.vscode-env",
+      "ms-vscode.vscode-typescript-next",
+      "formulahendry.auto-rename-tag",
+      "formulahendry.auto-close-tag",
+      "eamodio.gitlens"
       # "vscodevim.vim"
     ];
     workspace = {
