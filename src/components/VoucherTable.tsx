@@ -205,6 +205,7 @@ export function VoucherTable() {
         const wb = XLSX.read(data, { type: "array" });
         
         let totalImportedCount = 0;
+        let totalInvalidCount = 0;
         let sheetsToProcess = wb.SheetNames;
 
         for (const sheetName of sheetsToProcess) {
@@ -234,20 +235,47 @@ export function VoucherTable() {
           
           const existingNos = new Set(existingSnap?.map(d => d.sequence_number.toString()) || []);
 
-          const vouchersForSheet = rawData.map((row: any) => ({
-            ledgerId,
-            voucherNo: String(row["Voucher No"] || row["Voucher No."] || ""),
-            date: String(row["Date"] || ""),
-            recipient: String(row["Paid To"] || row["Recipient"] || ""),
-            amountRO: Number(row["Amount (R.O.)"] || row["Amount RO"] || 0),
-            amountBz: Number(row["Amount (Bz)"] || row["Amount Bz"] || 0),
-            paymentMethod: (row["Payment Method"] || "cash").toLowerCase() as PaymentMethod,
-            bankName: String(row["Bank"] || ""),
-            refNo: String(row["Cheque/Ref No"] || row["Ref No"] || ""),
-            purpose: String(row["Being (Purpose)"] || row["Purpose"] || ""),
-            sumInWords: String(row["Sum in Words"] || ""),
-          })).filter(v => v.voucherNo && v.recipient);
+          let sheetInvalidCount = 0;
+          const vouchersForSheet = rawData.map((row: any) => {
+            const vNo = String(row["Voucher No"] || row["Voucher No."] || "");
+            const recipient = String(row["Paid To"] || row["Recipient"] || "");
+            const amountRO = Number(row["Amount (R.O.)"] || row["Amount RO"] || 0);
+            const amountBz = Number(row["Amount (Bz)"] || row["Amount Bz"] || 0);
 
+            // Validate basic required fields and types
+            const isValid =
+              vNo &&
+              recipient &&
+              !isNaN(amountRO) &&
+              !isNaN(amountBz) &&
+              /^[0-9]+$/.test(vNo);
+
+            if (!isValid && (vNo || recipient)) {
+              sheetInvalidCount++;
+              return null;
+            }
+
+            if (!vNo || !recipient) return null;
+
+            let paymentMethod: PaymentMethod = "Cash";
+            const rawPM = String(row["Payment Method"] || "").toLowerCase();
+            if (rawPM.includes("cheque")) paymentMethod = "Cheque";
+            else if (rawPM.includes("transfer") || rawPM.includes("bank")) paymentMethod = "Bank Transfer";
+
+            return {
+              ledgerId,
+              voucherNo: vNo,
+              date: String(row["Date"] || ""),
+              recipient,
+              amountRO,
+              amountBz,
+              paymentMethod,
+              bankName: String(row["Bank"] || ""),
+              refNo: String(row["Cheque/Ref No"] || row["Ref No"] || ""),
+              purpose: String(row["Being (Purpose)"] || row["Purpose"] || ""),
+              sumInWords: String(row["Sum in Words"] || ""),
+            };
+          }).filter((v): v is NonNullable<typeof v> => v !== null);
           const newVouchers = vouchersForSheet.filter(v => !existingNos.has(v.voucherNo));
           const skippedCount = vouchersForSheet.length - newVouchers.length;
 
@@ -255,7 +283,7 @@ export function VoucherTable() {
             await bulkImportVouchers(newVouchers, user!.id);
             totalImportedCount += newVouchers.length;
           }
-
+          totalInvalidCount += sheetInvalidCount;
           if (skippedCount > 0) {
             console.log(`Skipped ${skippedCount} duplicate vouchers in sheet ${sheetName}`);
           }
@@ -263,7 +291,7 @@ export function VoucherTable() {
 
         toast({ 
           title: "Import Complete", 
-          description: `Successfully imported ${totalImportedCount} new vouchers.` 
+          description: `Successfully imported ${totalImportedCount} new vouchers.${totalInvalidCount > 0 ? ` Skipped ${totalInvalidCount} rows due to invalid data format.` : ""}`
         });
         
         // Refresh current view
