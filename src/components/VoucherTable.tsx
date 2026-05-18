@@ -54,6 +54,7 @@ import {
   createLedger,
   renameLedger,
   deleteLedger,
+  getLedgers,
   bulkDeleteVouchers,
 } from "@/lib/voucher-actions";
 import { convertAmountToWords } from "@/lib/amount-utils";
@@ -516,7 +517,7 @@ export function VoucherTable() {
     if (selectedIds.size === 0 || !user) return;
     setIsBulkDeleting(true);
     try {
-      await bulkDeleteVouchers(Array.from(selectedIds), user!.uid);
+      await bulkDeleteVouchers(Array.from(selectedIds), user!.id);
       setSelectedIds(new Set());
       setShowBulkDeleteConfirm(false);
       toast({ title: "Deleted Records" });
